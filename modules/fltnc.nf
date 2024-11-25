@@ -2,7 +2,7 @@ process split_reads {
 
     label 'split_reads'
 
-    publishDir "${params.results_output}qc/split_reads", mode: 'copy'
+    publishDir "${params.results_output}qc/split_reads", mode: 'copy', pattern: '*.segmented.summary.json'
 
     input:
 	   tuple val(sample_id), path(input_bam)
@@ -10,12 +10,9 @@ process split_reads {
 
     output:
       tuple val(sample_id), path("${sample_id}.segmented.bam"), emit: split_reads_tuple
-    	path "*"
-
     script:
     """
     pbskera split ${input_bam} ${skera_primers} ${sample_id}.segmented.bam
-    samtools index ${sample_id}.segmented.bam
     """
 
     stub:
@@ -28,7 +25,7 @@ process split_reads {
 process remove_primer {
     label 'remove_primer'
 
-    publishDir "${params.results_output}qc/removed_primer", mode: 'copy'
+    publishDir "${params.results_output}qc/removed_primer", mode: 'copy', pattern: "*.lima.summary"
 
     input:
       tuple val(sample_id), path(segmented_bam)
@@ -36,12 +33,10 @@ process remove_primer {
 
     output:
       tuple val(sample_id), path("${sample_id}.5p--3p.bam"), emit: removed_primer_tuple
-      path "*"
 
     script:
     """
     lima ${segmented_bam} ${tenx_primers} ${sample_id}.bam --isoseq
-    samtools index ${sample_id}.5p--3p.bam
     """
     stub:
     """
@@ -55,19 +50,15 @@ process remove_primer {
 process tag_bam {
     label 'remove_primer'
 
-    publishDir "${params.results_output}qc/tagged", mode: 'copy'
-
     input:
       tuple val(sample_id), path(primer_removed_bam)
 
     output:
     tuple val(sample_id), path("${sample_id}.flt.bam"), emit: tagged_tuple
-    path "*"
 
     script:
     """
     isoseq tag ${primer_removed_bam} ${sample_id}.flt.bam --design T-12U-16B
-    samtools index ${sample_id}.flt.bam
     """
     stub:
     """
@@ -89,8 +80,9 @@ process refine_reads {
       val min_polya_length
 
     output:
-      tuple val(sample_id), path("${sample_id}.fltnc.bam"), emit: refined_bam_tuple
-      path "*"
+      path "${sample_id}.fltnc.bam"
+      path "${sample_id}.fltnc.bai"
+      path "${sample_id}.fltnc.filter_summary.report.json"
 
     script:
     """
@@ -100,7 +92,5 @@ process refine_reads {
     stub:
     """
     touch ${sample_id}.fltnc.bam
-    isoseq refine --help
-    echo ${min_polya_length}
     """
 }
