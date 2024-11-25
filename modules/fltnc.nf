@@ -2,7 +2,7 @@ process split_reads {
 
     label 'split_reads'
 
-    publishDir "${params.results_output}qc/split_reads", mode: 'copy', pattern: '*.segmented.summary.json'
+    publishDir "${params.results_output}qc/skera_reports", mode: 'copy', pattern: '*.segmented.summary.json'
 
     input:
 	   tuple val(sample_id), path(input_bam)
@@ -25,7 +25,7 @@ process split_reads {
 process remove_primer {
     label 'remove_primer'
 
-    publishDir "${params.results_output}qc/removed_primer", mode: 'copy', pattern: "*.lima.summary"
+    publishDir "${params.results_output}qc/lima_reports", mode: 'copy', pattern: "*.lima.summary"
 
     input:
       tuple val(sample_id), path(segmented_bam)
