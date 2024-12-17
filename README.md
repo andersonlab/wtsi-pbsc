@@ -4,18 +4,18 @@ This pipeline based on Nextflow performs common large-scale preprocessing for Pa
 
 ## Specifying pipeline parameters
 To run the pipeline you need to create:
- - A parameter file`params.yaml`: a YAML file that contains these required parameters to run the different steps. Not that each module will require different sets of parameters (detailed in each section below). These YAML syntax to specify these parameters:
+ - A parameter file `params.yaml`: a YAML file that contains these required parameters to run the different steps. Not that each module will require different sets of parameters (detailed in each section below). These YAML syntax to specify these parameters:
 ```yaml
 #Comment
 param_path: "/path/to/file.txt"
 param_integer: 20
 ```
- - An executor configuration file: `exec.config`: specifies the runtime parameters such as memory and cpus to ask for for each step as well as the executor, queue name and error strategy. You can find more on the Nextflow documentation website [here](https://www.nextflow.io/docs/latest/config.html). We also provide a file `sanger.config` with the parameters that we used for isogut, although the appropriate runtime parameters may need to change per dataset and per execution environemnt.
+ - An executor configuration file `exec.config`: specifies the runtime parameters such as memory and cpus to ask for for each step as well as the executor, queue name and error strategy. You can find more on the Nextflow documentation website [here](https://www.nextflow.io/docs/latest/config.html). We also provide a file `sanger.config` with the parameters that we used for isogut, although the appropriate runtime parameters may need to change per dataset and per execution environemnt.
 
 ## Components of `wtsi-pbsc`
-`wtsi-pbsc` consists of four modules that represent different stages of pre-processing. Each module can be run indpendently provided the input files and parameters are correctly specified. Each step needs to be run with a set of parameters specified in the `parameters.yaml` file.
+`wtsi-pbsc` consists of four modules that represent different stages of pre-processing. Each module can be run indpendently provided the input files and parameters are correctly specified (e.g. using Nextflow option `entry fltnc`). Each step needs to be run with a set of parameters specified in the `parameters.yaml` file.
 ### 1- Step 1: HiFi reads to FLTNC reads
-`fltnc`: takes BAM files with HiFi reads (usually what you get from sequencing) and produces **f**ull-**l**ength **t**agged **n**on-**c**oncatemaer reads (FLTNC reads).
+Using module `fltnc`. `fltnc` takes BAM files with HiFi reads (usually what you get from sequencing) and produces **f**ull-**l**ength **t**agged **n**on-**c**oncatemaer reads (FLTNC reads).
 
 
 ### Parameters in `params.yaml`:
@@ -28,7 +28,6 @@ param_integer: 20
 |`results_output`| Path to output directory. Note that BAM and other types of files will be stored inside a subdirectory `qc`. 
 
 
-In order to run this pipeline, you will need to set-up two configuration files in the same directory as the main workflow file (currently `isoseq2.nf`).
 
 
 
