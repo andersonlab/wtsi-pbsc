@@ -2,13 +2,18 @@ nextflow.enable.dsl=2
 
 
 include { split_reads; remove_primer; tag_bam; refine_reads } from './modules/fltnc.nf'
-/// include { barcodes } from './modules/barcodes.nf'
+include { barcode_correction; dedup_reads } from './modules/barcodes.nf'
 /// include { dedup } from './modules/dedup.nf'
 /// include { pbmm2 } from './modules/pbmm2.nf'
 
 
-
-
+/// Setting default parameters
+if(!params.barcode_correction_percentile) {
+  params.barcode_correction_percentile=99
+}
+if(!params.min_polya_length) {
+  params.min_polya_length=20
+}
 
 
 
@@ -20,10 +25,10 @@ workflow fltnc {
     	.fromPath(params.input_samples_path)
     	.splitCsv(sep: ',', header: true)
     	.map { it -> [it.sample_id, it.long_read_path] } // Create a tuple with bam_path and sample_id
-    	.set { sample_id_and_bam }
+    	.set { hifi_bam_tuples }
 
     /// Every process from now on outputs a (sample_id,bam_file) tuple which is fed on to the next process
-    reads_split           = split_reads(sample_id_and_bam,params.skera_primers)
+    reads_split           = split_reads(hifi_bam_tuples,params.skera_primers)
     primer_removed        = remove_primer(reads_split.split_reads_tuple,params.tenx_primers)
     tagged                = tag_bam(primer_removed.removed_primer_tuple)
     refined_reads         = refine_reads(tagged.tagged_tuple,params.tenx_primers,params.min_polya_length)
@@ -31,6 +36,23 @@ workflow fltnc {
 }
 
 
+
+workflow correct_barcodes {
+
+Channel
+  .fromPath(params.input_samples_path)
+  .splitCsv(sep: ',', header: true)
+  .map { it ->
+    def sample_id = it.sample_id
+    def bam_path = "${params.results_output}/qc/refined/${sample_id}.fltnc.bam"
+    [sample_id, bam_path]
+  }
+  .set { refined_bam_tuples }
+
+  barcode_corrected   = barcode_correction(refined_bam_tuples,params.threeprime_whitelist,params.barcode_correction_method,params.barcode_correction_percentile)
+  dedup               = dedup_reads(barcode_corrected.barcode_corrected_tuple,params.barcode_correction_method,params.barcode_correction_percentile)
+
+}
 
 workflow correct_dedup {
 
@@ -40,7 +62,7 @@ workflow correct_dedup {
     .fromPath(refined_reads_paths)
     .set {refined_bams}
 
-  sorted_barcodes   = barcode_correction(refined_bams)
+  sorted_barcodes   = barcode_correction(refined_bams,params.barcode_correction_method, params.tenx_primers)
   sorted_cells      = sort_cellbarcodes(sorted_barcodes.barcode_corrected_bam)
   deduplication     = dedup_reads(sorted_cells.sorted_bam)
   stats             = postdedup_stats(deduplication.dedup_bam)

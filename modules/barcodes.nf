@@ -1,46 +1,72 @@
 process barcode_correction {
     label 'barcodes'
 
-    conda "/software/hgi/envs/conda/team152/mt27/isoseq/"
-
     input:
-        path refined_reads_bam
+        tuple val(sample_id), path(refined_reads_bam)
+        val threeprime_whitelist
+        val barcode_correction_method
+        val barcode_correction_percentile
 
     output:
-        path "*corrected.bam", emit: barcode_corrected_bam
+        tuple val(sample_id), path("${sample_id}.corrected.sorted.bam"), emit: barcode_corrected_tuple
         path "*"
 
 
     script:
-    """
-    sample_name=\$(echo ${refined_reads_bam} | cut -d'.' -f1)
-    isoseq correct --method ${params.barcode_correction_method} --barcodes ${params.threeprime_whitelist} ${refined_reads_bam} \$sample_name.corrected.bam
-    rm ${refined_reads_bam}
-    """
+        """
+        # Correct step
+        if [[ "${barcode_correction_method}" == "percentile" ]]; then
+            isoseq correct --method "${barcode_correction_method}" --percentile "${barcode_correction_percentile}" --barcodes "${threeprime_whitelist}" "${refined_reads_bam}" "${sample_id}.corrected.bam"
+        elif [[ "${barcode_correction_method}" == "knee" ]]; then
+            isoseq correct --method "${barcode_correction_method}" --barcodes "${threeprime_whitelist}" "${refined_reads_bam}" "${sample_id}.corrected.bam"
+        else
+            echo "Invalid barcode correction method: ${barcode_correction_method}" >&2
+            exit 1
+        fi
+
+        # Sort step
+        samtools sort -t CB "${sample_id}.corrected.bam" -o "${sample_id}.corrected.sorted.bam"
+        samtools index "${sample_id}.corrected.sorted.bam"
+
+        # BCStats step
+        if [[ "${barcode_correction_method}" == "percentile" ]]; then
+            isoseq bcstats --method "${barcode_correction_method}" --percentile "${barcode_correction_percentile}" --json "${sample_id}.corrected.sorted.json" -o "${sample_id}.corrected.sorted.tsv" "${sample_id}.corrected.sorted.bam"
+        elif [[ "${barcode_correction_method}" == "knee" ]]; then
+            isoseq bcstats --method "${barcode_correction_method}" --json "${sample_id}.corrected.sorted.json" -o "${sample_id}.corrected.sorted.tsv" "${sample_id}.corrected.sorted.bam"
+        else
+            echo "Invalid barcode correction method: ${barcode_correction_method}" >&2
+            exit 1
+        fi
+        """
+
 }
 
-process sort_cellbarcodes {
-    label 'sort_bc'
 
-    conda "/software/hgi/envs/conda/team152/mt27/isoseq/"
-    publishDir "${params.results_output}qc/corrected", mode: 'copy'
+process dedup_reads {
+    label 'deduplication'
 
     input:
-        path barcode_corrected_bam
+        tuple val(sample_id), path(barcode_corrected_bam)
+        val barcode_correction_method
+        val barcode_correction_percentile
+
 
     output:
-        path "*corrected.sorted.bam", emit: sorted_bam
-        path "*corrected.sorted.json"
-        path "*corrected.sorted.tsv"
-        path "*corrected.sorted.bam.bai"
-
+        tuple val(sample_id), path("${sample_id}.dedup.bam"), emit: dedup_tuple
+        path "*"
 
     script:
     """
-    sample_name=\$(echo ${barcode_corrected_bam} | cut -d'.' -f1)
-    samtools sort -t CB ${barcode_corrected_bam} -o \$sample_name.corrected.sorted.bam
-    isoseq bcstats --method ${params.barcode_correction_method} --json \$sample_name.corrected.sorted.json -o \$sample_name.corrected.sorted.tsv \$sample_name.corrected.sorted.bam
-    samtools index \$sample_name.corrected.sorted.bam
-    rm ${barcode_corrected_bam}
+    isoseq groupdedup --keep-non-real-cells ${barcode_corrected_bam} ${sample_id}.dedup.bam
+    if [[ "${barcode_correction_method}" == "percentile" ]]; then
+      isoseq bcstats --method ${barcode_correction_method} --percentile ${barcode_correction_percentile} --json ${sample_id}.dedup.json -o ${sample_id}.dedup.tsv ${sample_id}.dedup.bam
+    elif [[ "${barcode_correction_method}" == "knee" ]]; then
+      isoseq bcstats --method ${barcode_correction_method} --json ${sample_id}.dedup.json -o ${sample_id}.dedup.tsv ${sample_id}.dedup.bam
+    else
+        echo "Invalid barcode correction method: ${barcode_correction_method}" >&2
+        exit 1
+    fi;
+    samtools index ${sample_id}.dedup.bam
+
     """
 }

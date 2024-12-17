@@ -2,7 +2,7 @@ process split_reads {
 
     label 'split_reads'
 
-    publishDir "${params.results_output}qc/skera_reports", mode: 'copy', pattern: '*.segmented.summary.json'
+    publishDir "${params.results_output}qc/skera_reports", mode: 'copy', pattern: '*.segmented.summary.json, *.segmented.summary.csv, *.segmented.read_lengths.csv'
 
     input:
 	   tuple val(sample_id), path(input_bam)
@@ -10,6 +10,9 @@ process split_reads {
 
     output:
       tuple val(sample_id), path("${sample_id}.segmented.bam"), emit: split_reads_tuple
+      path "${sample_id}.segmented.summary.json"
+      path "${sample_id}.segmented.summary.csv"
+      path "${sample_id}.segmented.read_lengths.csv"
     script:
     """
     pbskera split ${input_bam} ${skera_primers} ${sample_id}.segmented.bam
@@ -33,6 +36,7 @@ process remove_primer {
 
     output:
       tuple val(sample_id), path("${sample_id}.5p--3p.bam"), emit: removed_primer_tuple
+      path "${sample_id}.lima.summary"
 
     script:
     """
@@ -80,9 +84,7 @@ process refine_reads {
       val min_polya_length
 
     output:
-      path "${sample_id}.fltnc.bam"
-      path "${sample_id}.fltnc.bai"
-      path "${sample_id}.fltnc.filter_summary.report.json"
+      path "*"
 
     script:
     """
