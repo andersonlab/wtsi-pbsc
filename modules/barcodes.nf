@@ -1,5 +1,6 @@
 process barcode_correction {
     label 'barcodes'
+    publishDir "${params.results_output}qc/correct", mode: 'copy'
 
     input:
         tuple val(sample_id), path(refined_reads_bam)
@@ -9,7 +10,8 @@ process barcode_correction {
 
     output:
         tuple val(sample_id), path("${sample_id}.corrected.sorted.bam"), emit: barcode_corrected_tuple
-        path "*"
+        path "*corrected.sorted*"
+        path "*corrected.report*"
 
 
     script:
@@ -44,6 +46,7 @@ process barcode_correction {
 
 process dedup_reads {
     label 'deduplication'
+    publishDir "${params.results_output}qc/dedup", mode: 'copy'
 
     input:
         tuple val(sample_id), path(barcode_corrected_bam)
