@@ -16,6 +16,18 @@ param_integer: 20
 `wtsi-pbsc` consists of four modules that represent different stages of pre-processing. Each module can be run indpendently provided the input files and parameters are correctly specified (e.g. using Nextflow option `entry fltnc`). Each step needs to be run with a set of parameters specified in the `parameters.yaml` file.
 ### 1- Step 1: HiFi reads to FLTNC reads
 Using module `fltnc`. `fltnc` takes BAM files with HiFi reads (usually what you get from sequencing) and produces **f**ull-**l**ength **t**agged **n**on-**c**oncatemaer reads (FLTNC reads).
+### 2- Step 2: Barcode correction and PCR deduplication
+### 3- Step 3: Mapping to the genome using pbmm2 (which is a Pacbio wrapper around minimap2)
+### 4- Step 4: Quantification using IsoQuant
+As Quantification can be extremely time and memory-consuming, we implement several parallelisation strategies to speed up the process. 
+#### No parallelisation: 
+IsoQuant runs on all samples jointly and using all regions of the genome together. Suitable for a small number of samples (default IsoQuant behaviour)
+#### By chromosome: 
+IsoQuant runs on all samples jointly but splitting by chromosome. Suitable for a moderate number of samples (e.g. < 20)
+#### By chunk: 
+IsoQuant runs on all samples jointly but further splitting each chromosome into smaller chunks. Splitting points within regions of zero-coverage across all samples. Suitable for a large number of samples (e.g. < 60).
+#### Two-pass approach: 
+A two-pass approach where IsoQuant first quantifies known isoforms on a sample-by-sample basis (i.e. using IsoQuant's command-line argument `--no_model_construction`). Second, IsoQuant pools all remaining reads turning on isoform discovery (i.e. `inconsistent`,`inconsistent_ambiguous` and `inconsistent_non_intronic`).
 
 
 ### Parameters in `params.yaml`:
@@ -35,6 +47,14 @@ Using module `fltnc`. `fltnc` takes BAM files with HiFi reads (usually what you 
 | `results_output`                  | Path to output directory. Note that BAM and other types of files will be stored inside a subdirectory `qc`.                                                            |
 | `chunks`                          | Number of chunks used for the parallelisation of IsoQuant.                                                                                                             |
 | `isoquant_exclusion_regions_bed`  | Regions to exclude from quantification. In the data directory, V(D)J regions are provided as they are problematic for quantification in a large number of samples. Any BED file can be provided. |
+
+
+
+
+
+
+
+
 
 
 
