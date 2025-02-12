@@ -24,7 +24,7 @@ Using module `fltnc`. `fltnc` takes BAM files with HiFi reads (usually what you 
 
 |-------------|-----------|
 
-|`input_samples_path`| Path to a comma-separated file with a header `sample_id`,`long_read_path`. Each entry should contain the sample_id and the path to the input BAM file with HiFi reads|
+|`input_samples_path`| Path to a comma-separated file with a header `sample_id`,`long_read_path`. Each entry should contain the sample\_id and the path to the input BAM file with HiFi reads|
 |`exclude_samples`| File containing at least one column (`sample_id`) and listing the samples to be excluded from analysis. |
 | `skera_primers` | Path to primers that link concatenated reads. Required for `skera` to de-concatenate reads. Download [here](https://downloads.pacbcloud.com/public/dataset/MAS-Seq/REF-MAS_adapters/MAS-Seq_Adapter_v1/mas16_primers.fasta). |
 | `tenx_primers` | Path to 10X 3'/5' primers. Required for `lima` to remove 10X primers. Download [here](https://downloads.pacbcloud.com/public/dataset/MAS-Seq/REF-10x_primers/). |
