@@ -1,10 +1,20 @@
 nextflow.enable.dsl=2
 
 
+///Modules
 include { split_reads; remove_primer; tag_bam; refine_reads } from './modules/fltnc.nf'
 include { barcode_correction; dedup_reads } from './modules/barcodes.nf'
 include { pbmm2 } from './modules/pbmm2.nf'
-include { isoquant_split_by_chr; run_isoquant } from './modules/isoquant.nf'
+///include {preprocess_bam; find_mapped_and_unmapped_regions_per_sampleChrom; acrossSamples_mapped_unmapped_regions_perChr; suggest_splits_binarySearch; split_bams; create_genedb_fasta_perChr; run_isoquant_chunked} from './modules/isoquant.nf'
+
+
+///Subworkflows
+include {chroms} from './subworkflows/core/chroms.nf'
+include {bamsWithExclusion} from './subworkflows/core/bamsWithExclusion.nf'
+include {preprocess_bam_perChr_wf} from './subworkflows/isoquant_components/preprocess_bam.nf'
+include {genedb_perChr_wf} from './subworkflows/isoquant_components/genedb.nf'
+include {isoquant_twopass_perChr_wf; isoquant_twopass_chunked_wf} from './subworkflows/isoquant_recipes/isoquant_twopass.nf'
+
 
 
 /// Setting default parameters
@@ -18,6 +28,11 @@ if(!params.min_polya_length) {
 if(!params.exclude_samples) {
   params.exclude_samples=[]
 }
+
+if(params.chunks) {
+  chrom_sizes_f=params.nf_basedir+"data/hg38.chrom.sizes"
+}
+
 
 
 
@@ -85,149 +100,163 @@ Channel
   mapped_reads         = pbmm2(dedup_bam_tuples,params.genome_fasta_f)
 }
 
-workflow isoquant {
+
+workflow isoquant_twopass {
+
+
+  def chromosomes_list = ['chr1', 'chr2', 'chr3', 'chr4', 'chr5', 'chr6', 'chr7', 'chr8', 'chr9',
+                          'chr10', 'chr11', 'chr12', 'chr13', 'chr14', 'chr15', 'chr16', 'chr17',
+                          'chr18', 'chr19', 'chr20', 'chr21', 'chr22', 'chrX', 'chrY']
+  ///def chromosomes_list = ['chr22']
+
+  chrom_ch=chroms(chromosomes_list)
+  ///.filter{chrom -> chrom=='chr2' }
+  fullBam_ch=bamsWithExclusion()
+  ///.filter{tpl -> (tpl[0]=='Isogut14548280') || (tpl[0]=='Isogut14548279') || (tpl[0]=='Isogut14548278') || (tpl[0]=='Isogut14548277') || (tpl[0]=='Isogut14548276') || (tpl[0]=='Isogut14548275')}
+  chrom_genedb_fasta_chr_ch=genedb_perChr_wf(chrom_ch,params.gtf_f,params.genome_fasta_f)
+  preprocessed_bam_perChr_ch=preprocess_bam_perChr_wf(chrom_ch,fullBam_ch)
+  isoquant_secondpass_output_ch=isoquant_twopass_chunked_wf(preprocessed_bam_perChr_ch,chrom_genedb_fasta_chr_ch,chrom_sizes_f,params.chunks)
+
+}
+workflow isoquant_chunked_old {
 
 
 def chromosomes_list = ['chr1', 'chr2', 'chr3', 'chr4', 'chr5', 'chr6', 'chr7', 'chr8', 'chr9',
                         'chr10', 'chr11', 'chr12', 'chr13', 'chr14', 'chr15', 'chr16', 'chr17',
                         'chr18', 'chr19', 'chr20', 'chr21', 'chr22', 'chrX', 'chrY']
 
-def excluded_samples_list = file(params.exclude_samples).exists() ?
-  file(params.exclude_samples).text.split('\n').drop(1).collect { it.split(',')[0].trim() } : []
+///Testing
+/// def chromosomes_list = ['chr22']
+///
+chrom_ch=chroms(chromosomes_list)
+fullBam_ch=bamsWithExclusion()
+
+///Similar to fullBam_ch, but emits processed BAMs
+processedFullBam_ch=preprocess_bam(fullBam_ch)
+///Similar to processedFullBam_ch, but has a record per chromosome (useful for processing by chromosome using the full processed BAM files)
+///TESTING: .filter{record -> (record[0]=='Isogut15020393') || (record[0]=='Isogut14548284') }
+processedFullBam_ch
+.combine(chrom_ch)
+.map{ sample_id,bam,bai,chrom -> [sample_id,chrom,bam,bai] }
+.set{processedFullBam_Chrom_tuple_ch}
+
+///Similar to processedFullBam_Chrom_tuple_ch but tuples are grouped per chromosome
+processedFullBam_Chrom_tuple_ch
+.map{sample_id,chrom,bam,bai -> [chrom,sample_id,bam,bai]}
+.groupTuple()
+.set{processedFullBam_Chrom_groupedTuple_ch}
+
+///////////////////////////////////
+///////////TO BE REMOVED///////////
+///////////////////////////////////
+///mapped_bam_ch
+/// .flatMap { it ->
+///      def sample_id = it.sample_id
+///      def bam_path = "${params.results_output}qc/mapped/${sample_id}.mapped.realcells_only.bam"
+///      def bai_path = "${params.results_output}qc/mapped/${sample_id}.mapped.realcells_only.bam.bai"
+///      chromosomes_list.collect { chromosome -> [sample_id, chromosome, bam_path, bai_path] }
+///    }
+///    .set { mapped_bam_chrom_tuples }
+///////////////////////////////////
+///////////END: TO BE REMOVED//////
+///////////////////////////////////
 
 
-Channel
-  .fromPath(params.input_samples_path)
-  .splitCsv(sep: ',', header: true)
-  .filter { it -> !(it.sample_id in excluded_samples_list) }
-  .flatMap { it ->
-    def sample_id = it.sample_id
-    def bam_path = "${params.results_output}qc/mapped/${sample_id}.mapped.realcells_only.bam"
-    def bai_path = "${params.results_output}qc/mapped/${sample_id}.mapped.realcells_only.bam.bai"
-    chromosomes_list.collect { chromosome -> [sample_id, chromosome, bam_path, bai_path] }
-  }
-  .set { mapped_bam_chrom_tuples }
 
 
-isoquant_split_tuple=isoquant_split_by_chr(mapped_bam_chrom_tuples)
-
-isoquant_split_tuple
-    .map { sample_id, chrom, bam, bai -> [chrom, sample_id, bam, bai] }
-    .groupTuple()
-    .set { bam_chrom_tuples }
-
-isoquant_output=run_isoquant(bam_chrom_tuples,params.gtf_f,params.genome_fasta_f)
-
-}
-
-workflow collapse_classify {
-
-    def mapped_reads_paths = "${params.results_output}/results/mapped_bam/*mapped.realcells_only.bam"
-    Channel.fromPath(mapped_reads_paths).set { mapped_bams }
-    collapsed_isoforms   = collapse_isoforms(mapped_bams)
-
-    //Preparing input for SQANTI3 QC
-    collapsed_isoforms_tuple = collapsed_isoforms.collapsed_gff_path.map { path ->
-       def sampleId = path.name.find(/(Isogut\d+)/)
-       tuple(sampleId, path)
-    }
-    collapsed_abundance_tuple = collapsed_isoforms.collapsed_abundance_path.map { path ->
-       def sampleId = path.name.find(/(Isogut\d+)/)
-       tuple(sampleId, path)
-    }
-
-    collapsed_isoforms_tuple
-       .join(collapsed_abundance_tuple, by: 0)
-       .set { sqanti3_qc_input }
-    sqanti3_qc = sqanti3_classify_isoforms(sqanti3_qc_input)
-
-    //Preparing input for SQANTI3 FILTERING
-    sqanti3_classification_tuple = sqanti3_qc.classification_files.map { path ->
-       def sampleId = path.name.find(/(Isogut\d+)/)
-       tuple(sampleId, path)
-    }
-    sqanti3_faa_tuple = sqanti3_qc.faa_files.map { path ->
-       def sampleId = path.name.find(/(Isogut\d+)/)
-       tuple(sampleId, path)
-    }
-
-    sqanti3_gtf_tuple = sqanti3_qc.gtf_files.map { path ->
-       def sampleId = path.name.find(/(Isogut\d+)/)
-       tuple(sampleId, path)
-    }
-
-    sqanti3_classification_tuple
-       .join(sqanti3_gtf_tuple, by: 0)
-       .join(sqanti3_faa_tuple, by: 0)
-       .set { sqanti3_filter_input }
-     sqanti3_filter = sqanti3_filter_isoforms(sqanti3_filter_input)
-
-     ///////////
-
-    def fasta_paths="${params.results_output}/results/unmapped_bam/*.fasta"
-    fastaFiles = Channel
-       .fromPath(fasta_paths)
-       .map { file ->
-           // Extract just the sample identifier from the filename
-           def sampleId = file.name.find(/(Isogut\d+)/)
-           tuple(sampleId, file)
-    }
-    sqanti3_classification_tuple = sqanti3_qc.classification_files.map { path ->
-       def sampleId = path.name.find(/(Isogut\d+)/)
-       tuple(sampleId, path)
-    }
-    sqanti3_filtered_tuple = sqanti3_filter.filtered_classification_files.map { path ->
-       def sampleId = path.name.find(/(Isogut\d+)/)
-       tuple(sampleId, path)
-    }
-
-   collapsed_group_path = collapsed_isoforms.collapsed_group_path.map { path ->
-       def sampleId = path.name.find(/(Isogut\d+)/)
-       tuple(sampleId, path)
-    }
-    fastaFiles
-        .join(sqanti3_classification_tuple, by: 0)
-        .join(sqanti3_filtered_tuple, by: 0)
-        .join(collapsed_abundance_tuple, by: 0)
-        .join(collapsed_group_path, by: 0)
-        .set { sqanti3_seurat_input }
-    sqanti3_seurat = sqanti3_seurat_isoform(sqanti3_seurat_input)
 
 
-    //prepared_gff         = prepare_input_GFF(collapsed_isoforms.collapsed_gff_path)
-    //classified_isoforms  = classify_isoforms(prepared_gff,collapsed_isoforms.collapsed_abundance_path)
-    // filtered_isoforms    = filter_isoforms(classified_isoforms.classification_files,classified_isoforms.junction_files,collapsed_isoforms.collapsed_gff_path)
 
-    // Preparing all required files for seurat_isoform
-    // Extract the identifier from the fasta filenames
-    // def fasta_paths="${params.results_output}/results/unmapped_bam/*.fasta"
-    // fastaFiles = Channel
-    //    .fromPath(fasta_paths)
-    //    .map { file ->
-    //        // Extract just the sample identifier from the filename
-    //        def sampleId = file.name.find(/(Isogut\d+)/)
-    //        tuple(sampleId, file)
-    //    }
+    /////////////////////////////////////////////////////////
+    ///////////Workflow for splitting by chromosome only/////
+    /////////////////////////////////////////////////////////
 
-    // Setup for the classificationFiles channel
-    // classificationFiles = filtered_isoforms.classification_filtered_files.map { path ->
-    //    def sampleId = path.name.find(/(Isogut\d+)/)
-    //    tuple(sampleId, path)
-    // }
 
-    // Setup for the collapsed_group_path channel
-    // collapsed_group_path = collapsed_isoforms.collapsed_group_path.map { path ->
-    //    def sampleId = path.name.find(/(Isogut\d+)/)
-    //    tuple(sampleId, path)
-    // }
+    ////// isoquant_split_tuple=isoquant_split_by_chr(mapped_bam_chrom_tuples)
 
-    // Join channels by matching the sample identifier, which is the base name transformation
-    // matchedFiles = fastaFiles
-    //    .join(classificationFiles, by: 0)
-    //    .join(collapsed_group_path, by: 0)
-    //    .set { seurat_input }
+    ////// isoquant_split_tuple
+    //////    .map { sample_id, chrom, bam, bai -> [chrom, sample_id, bam, bai] }
+    //////    .groupTuple()
+    //////    .set { bam_chrom_tuples }
 
-    // seurat_output        = seurat_isoform(seurat_input)
+    ////// isoquant_output=run_isoquant(bam_chrom_tuples,params.gtf_f,params.genome_fasta_f)
 
+    //////////////////////////////////////////////////////////////////////
+    /////////Workflow for splitting by chromosome only and chunks/////////
+    //////////////////////////////////////////////////////////////////////
+
+    def unmapped_regions_f="${params.results_output}misc/unmapped_regions.bed"
+    def mapped_regions_f="${params.results_output}misc/mapped_regions.bed"
+    def chunks_numreads_f="${params.results_output}misc/chunks_numreads.csv"
+
+
+
+
+    ///Finding mapped/unmapped regions (per chromosome)
+    mapped_unmapped_regions_tuple_ch=find_mapped_and_unmapped_regions_per_sampleChrom(processedFullBam_Chrom_tuple_ch,chrom_sizes_f)
+    mapped_unmapped_regions_tuple_ch.groupTuple().set{mapped_unmapped_regions_groupedTuple_ch}
+
+    ///Finding intersections of unmapped regions, and merging mapped regions (per chromosome)
+    acrossSamples_mapped_unmapped_regions_perChr_ch=acrossSamples_mapped_unmapped_regions_perChr(mapped_unmapped_regions_groupedTuple_ch)
+
+    /// Merging grouped BAM tuples with mapped/unmapped BED files
+    processedFullBam_Chrom_groupedTuple_ch.join(acrossSamples_mapped_unmapped_regions_perChr_ch.mapped_bed,by:0).set { processedFullBam_mappedbed_tuples_ch }
+    processedFullBam_Chrom_groupedTuple_ch.join(acrossSamples_mapped_unmapped_regions_perChr_ch.unmapped_bed,by:0).set { processedFullBam_unmappedbed_tuples_ch }
+    suggested_splits_ch=suggest_splits_binarySearch(processedFullBam_unmappedbed_tuples_ch,params.chunks,chrom_sizes_f)
+
+    ///Logging mapped/unmapped BEDs
+    ///acrossSamples_mapped_unmapped_regions_perChr.mapped_bed
+    ///    .collectFile(name: mapped_regions_f, cache: false)
+    //////    .view(f -> f.toString())
+
+    ///acrossSamples_mapped_unmapped_regions_perChr.unmapped_bed
+    ///    .collectFile(name: unmapped_regions_f, cache: false)
+    //////    .view(f -> f.toString())
+
+
+
+    suggested_splits_ch.flatMap { tuple ->
+        def chrom = tuple[0]     // Extract chrom from the tuple
+        def filePath = tuple[3]  // Get the last item in the tuple (path to file)
+        file(filePath).text.split('\n') // Read file content and split into lines
+            .findAll { it }             // Remove empty lines
+            .collect { line ->          // Format each line and pair it with chrom
+                def cols = line.split('\t') // Split line into columns by tab
+                def formattedRegion = cols[0]+":"+cols[1]+"-"+cols[2] // Region formatting
+                def programmaticRegion=cols[0]+"_"+cols[1]+"_"+cols[2]
+                [chrom, formattedRegion,programmaticRegion] // Return chrom and formatted line as a pair
+            }
+    }.set {chrom_region_ch}
+
+    /// Splitting BAMs according to suggested regions
+    processedFullBam_Chrom_groupedTuple_ch
+      .combine(chrom_region_ch,by:0)
+      .set {processedFullBam_Region_groupedTuple_ch}
+    processedRegionBam=split_bams(processedFullBam_Region_groupedTuple_ch)
+    /// Logging numreads per chunk to be analyzed prior to running chunks (to better understand memory allocation)
+    processedRegionBam
+    .map {chrom, sample_ids, bams, bais, formattedRegion, programmaticRegion, counts  -> counts }
+    .collectFile(name: chunks_numreads_f, cache: false)
+    //////.view(f -> f.toString())
+
+
+
+    /// Running chunked isoquant
+
+    /// Splitting Genome FASTA and GENCODE GTF per chromosome
+    chrom_ch
+    .map {chrom -> [chrom,params.gtf_f,params.genome_fasta_f]}
+    .set {chrom_genedb_fasta_chr_input_ch}
+    chrom_genedb_fasta_chr_ch=create_genedb_fasta_perChr(chrom_genedb_fasta_chr_input_ch)
+
+
+    processedRegionBam
+    .map {chrom, sample_ids, bams, bais, formattedRegion, programmaticRegion, counts  -> [chrom, sample_ids, bams, bais, formattedRegion, programmaticRegion, file(counts).splitCsv(header:false)[0][1] ] }
+    .combine(chrom_genedb_fasta_chr_ch.map{chrom, chrom_gtf_f, chrom_genedb_f,chrom_fasta, chrom_fai -> [chrom,chrom_genedb_f,chrom_fasta,chrom_fai]},by:0)
+    .set {isoquant_chunked_input}
+
+
+    isoquant_output=run_isoquant_chunked(isoquant_chunked_input)
+    isoquant_output.view()
 
 }
