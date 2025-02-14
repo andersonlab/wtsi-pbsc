@@ -18,16 +18,16 @@ process barcode_correction {
         """
         # Correct step
         if [[ "${barcode_correction_method}" == "percentile" ]]; then
-            isoseq correct --method "${barcode_correction_method}" --percentile "${barcode_correction_percentile}" --barcodes "${threeprime_whitelist}" "${refined_reads_bam}" "${sample_id}.corrected.bam"
+            isoseq correct  -j ${task.cpus} --method "${barcode_correction_method}" --percentile "${barcode_correction_percentile}" --barcodes "${threeprime_whitelist}" "${refined_reads_bam}" "${sample_id}.corrected.bam"
         elif [[ "${barcode_correction_method}" == "knee" ]]; then
-            isoseq correct --method "${barcode_correction_method}" --barcodes "${threeprime_whitelist}" "${refined_reads_bam}" "${sample_id}.corrected.bam"
+            isoseq correct -j ${task.cpus} --method "${barcode_correction_method}" --barcodes "${threeprime_whitelist}" "${refined_reads_bam}" "${sample_id}.corrected.bam"
         else
             echo "Invalid barcode correction method: ${barcode_correction_method}" >&2
             exit 1
         fi
 
         # Sort step
-        samtools sort -t CB "${sample_id}.corrected.bam" -o "${sample_id}.corrected.sorted.bam"
+        samtools sort -@ ${task.cpus} -t CB "${sample_id}.corrected.bam" -o "${sample_id}.corrected.sorted.bam"
         samtools index "${sample_id}.corrected.sorted.bam"
 
         # BCStats step
@@ -60,16 +60,16 @@ process dedup_reads {
 
     script:
     """
-    isoseq groupdedup --keep-non-real-cells ${barcode_corrected_bam} ${sample_id}.dedup.bam
+    isoseq groupdedup  -j ${task.cpus} --keep-non-real-cells ${barcode_corrected_bam} ${sample_id}.dedup.bam
     if [[ "${barcode_correction_method}" == "percentile" ]]; then
-      isoseq bcstats --method ${barcode_correction_method} --percentile ${barcode_correction_percentile} --json ${sample_id}.dedup.json -o ${sample_id}.dedup.tsv ${sample_id}.dedup.bam
+      isoseq bcstats  -j ${task.cpus} --method ${barcode_correction_method} --percentile ${barcode_correction_percentile} --json ${sample_id}.dedup.json -o ${sample_id}.dedup.tsv ${sample_id}.dedup.bam
     elif [[ "${barcode_correction_method}" == "knee" ]]; then
-      isoseq bcstats --method ${barcode_correction_method} --json ${sample_id}.dedup.json -o ${sample_id}.dedup.tsv ${sample_id}.dedup.bam
+      isoseq bcstats  -j ${task.cpus} --method ${barcode_correction_method} --json ${sample_id}.dedup.json -o ${sample_id}.dedup.tsv ${sample_id}.dedup.bam
     else
         echo "Invalid barcode correction method: ${barcode_correction_method}" >&2
         exit 1
     fi;
-    samtools index ${sample_id}.dedup.bam
+    samtools index -@ {task.cpus} ${sample_id}.dedup.bam
 
     """
 }

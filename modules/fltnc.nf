@@ -15,7 +15,7 @@ process split_reads {
       path "${sample_id}.segmented.read_lengths.csv"
     script:
     """
-    pbskera split ${input_bam} ${skera_primers} ${sample_id}.segmented.bam
+    pbskera -j ${task.cpus} split ${input_bam} ${skera_primers} ${sample_id}.segmented.bam
     """
 
     stub:
@@ -40,7 +40,7 @@ process remove_primer {
 
     script:
     """
-    lima ${segmented_bam} ${tenx_primers} ${sample_id}.bam --isoseq
+    lima -j ${task.cpus} ${segmented_bam} ${tenx_primers} ${sample_id}.bam --isoseq
     """
     stub:
     """
@@ -62,7 +62,7 @@ process tag_bam {
 
     script:
     """
-    isoseq tag ${primer_removed_bam} ${sample_id}.flt.bam --design T-12U-16B
+    isoseq tag -j ${task.cpus} ${primer_removed_bam} ${sample_id}.flt.bam --design T-12U-16B
     """
     stub:
     """
@@ -88,7 +88,7 @@ process refine_reads {
 
     script:
     """
-    isoseq refine ${tagged_bam} ${tenx_primers} ${sample_id}.fltnc.bam --require-polya --min-polya-length ${min_polya_length}
+    isoseq refine ${tagged_bam} ${tenx_primers} ${sample_id}.fltnc.bam  -j ${task.cpus} --require-polya --min-polya-length ${min_polya_length}
     samtools index ${sample_id}.fltnc.bam
     """
     stub:
