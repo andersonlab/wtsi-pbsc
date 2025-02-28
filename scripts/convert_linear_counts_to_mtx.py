@@ -52,6 +52,7 @@ def write_mtx_dat(full_mtx,features_dat,groups_dat,output_dir,output_prefix):
         print('wrote matrix.mtx file...')
 
         #genes.tsv file
+        features_dat[1]=features_dat['#feature_id']
         features_dat.to_csv(output_dir+output_prefix+'genes.tsv',sep='\t',header=False,index=False)
         print('wrote genes.tsv file...')
 

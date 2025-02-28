@@ -176,12 +176,191 @@ process run_isoquant_chunked {
     """
     echo "${chrom},${formattedRegion},${programmaticRegion},${numReads},${task.memory}" > custom_isoquantlog_${programmaticRegion}.out
 
-    
+
     isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${bams.join(' ')} --labels ${sample_ids.join(' ')} --data_type pacbio_ccs -o ${programmaticRegion} -p ${programmaticRegion} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format linear --bam_tags CB --no_secondary --clean_start
 
 
     """
 }
+
+process replace_novel_names {
+    label 'micro_job'
+
+
+    input:
+      tuple val(chrom), val(programmaticRegion), path(isoquant_output)
+
+    output:
+        tuple val(chrom), val(programmaticRegion), path("${programmaticRegion}/${programmaticRegion}_renamed/")
+
+
+    script:
+    """
+    input_dir=${isoquant_output}/${programmaticRegion}/
+    output_dir=${isoquant_output}/${programmaticRegion}_renamed/
+    mkdir -p \$output_dir
+
+    query_file_suffixes=(\\
+    .transcript_model_counts.tsv \\
+    .transcript_model_grouped_counts_linear.tsv \\
+    .transcript_model_grouped_counts.tsv \\
+    .transcript_model_grouped_tpm.tsv \\
+    .transcript_model_reads.tsv.gz \\
+    .transcript_models.gtf \\
+    .transcript_model_tpm.tsv \\
+    .transcript_tpm.tsv \\
+    .transcript_counts.tsv \\
+    .transcript_grouped_counts_linear.tsv \\
+    .transcript_grouped_counts.tsv \\
+    .transcript_grouped_tpm.tsv \\
+    .novel_vs_known.SQANTI-like.tsv \\
+    .extended_annotation.gtf \\
+    .gene_counts.tsv \\
+    .gene_grouped_counts_linear.tsv \\
+    .gene_grouped_counts.tsv \\
+    .gene_grouped_tpm.tsv \\
+    .gene_tpm.tsv \\
+    )
+
+    asis_file_suffixes=(\\
+    .intron_grouped_counts.tsv \\
+    .intron_counts.tsv \\
+    .exon_counts.tsv \\
+    .exon_grouped_counts.tsv \\
+    .corrected_reads.bed.gz \\
+    .read_assignments.tsv.gz \\
+    )
+
+    for suffix in \${query_file_suffixes[@]}; do
+      input_f="\${input_dir}${programmaticRegion}\${suffix}"
+      output_f="\${output_dir}${programmaticRegion}\${suffix}"
+      sed -E "s/(transcript[0-9]+)\\.([^.]+)\\.([^.]+)/\\1.${programmaticRegion}.\\3/g; s/(novel_gene)_([^_]+)_([0-9]+)/\\1_${programmaticRegion}_\\3/g" \${input_f} > \${output_f}
+    done;
+
+    for suffix in \${asis_file_suffixes[@]}; do
+      input_f="\${input_dir}${programmaticRegion}\${suffix}"
+      output_f="\${output_dir}${programmaticRegion}\${suffix}"
+      cp \${input_f} \${output_f}
+    done;
+
+    #This should later be added to isoquant_chunked process
+    #There is a bug in Isoquant where if i include only inconsistent reads it still generates known isoforms in the transcript_model_linear_counts.tsv file
+    output_suffix_withknown=.transcript_model_grouped_counts_linear.tsv
+    output_suffix_noknown=.transcript_model_grouped_counts_linear.noknown.tsv
+    output_f_withknown="\${output_dir}${programmaticRegion}\${output_suffix_withknown}"
+    output_f_noknown="\${output_dir}${programmaticRegion}\${output_suffix_noknown}"
+    grep -v "^ENST" \${output_f_withknown} > \${output_f_noknown}
+
+    """
+}
+
+///////////////////////////////////////////////////
+//////////IsoQuant output collection scripts////////
+///////////////////////////////////////////////////
+process collect_counts_as_mtx {
+    label 'massive_job'
+
+    input:
+        path(isoquant_linear_count_files)
+
+    output:
+        path("barcodes.tsv")
+        path("genes.tsv")
+        path("matrix.mtx")
+
+    script:
+    """
+    python ${baseDir}/scripts/convert_linear_counts_to_mtx.py -i ${isoquant_linear_count_files.join(' ')}
+    """
+}
+
+process collect_counts_as_mtx_perChr {
+    label 'big_job'
+
+    input:
+        tuple val(chrom), path(isoquant_linear_count_files)
+
+    output:
+        path("${chrom}"), emit: chrom_mtx
+        path("${chrom}/barcodes.tsv")
+        path("${chrom}/genes.tsv")
+        path("${chrom}/matrix.mtx")
+
+    script:
+    """
+
+    mkdir -p ${chrom}
+    python ${baseDir}/scripts/convert_linear_counts_to_mtx.py -i ${isoquant_linear_count_files.join(' ')} -d ${chrom}/
+    """
+}
+
+process collect_mtx_as_h5ad {
+    label 'big_job'
+
+    input:
+        path(mtx_files)
+        val(prefix)
+
+    output:
+        path("${prefix}.h5ad"), emit: h5ad_file
+    script:
+    """
+
+    python ${baseDir}/scripts/mtx_to_hda5.py -i ${mtx_files.join(' ')} -p ${prefix}
+    """
+}
+
+///Note that there should be any duplicates in GTFs for non-overlapping regions
+process collect_gtfs {
+    label 'big_job'
+
+    input:
+        path(query_gtf_files)
+        path(ref_gtf_f)
+
+    output:
+        path("extended_annotation.gtf")
+
+    script:
+    """
+    query_gft_fs=(${query_gtf_files.join(' ')})
+    for f in "\${query_gft_fs[@]}"; do echo \$f; done > query_gtf_files.txt
+    python ${baseDir}/scripts/collect_gtfs.py -Q query_gtf_files.txt -r ${ref_gtf_f} -o extended_annotation.gtf
+    """
+}
+
+process format_intron_exon_grouped_counts {
+    label 'small_job'
+
+    input:
+        tuple val(prefix), path(input_f)
+
+
+    output:
+        path("${prefix}.include_counts.tsv"), emit: include_counts
+        path("${prefix}.exclude_counts.tsv"), emit: exclude_counts
+
+
+    script:
+    """
+    python ${baseDir}/scripts/collect_intron_exon_grouped_counts.py -i ${input_f} -p ${prefix}
+    """
+}
+process format_intron_exon_grouped_counts_perChr {
+    label 'small_job'
+
+    input:
+        tuple val(chrom), val(prefix), path(input_f)
+    output:
+        tuple val(chrom), path("${prefix}.include_counts.tsv"), path("${prefix}.exclude_counts.tsv")
+
+    script:
+    """
+    python ${baseDir}/scripts/collect_intron_exon_grouped_counts.py -i ${input_f} -p ${prefix}
+    """
+}
+
+
 
 
 /////////Split by chromosome only not by chunk///////////
@@ -201,7 +380,7 @@ process isoquant_split_by_chr {
     samtools index ${sample_id}.${chrom}.mapped.realcells_only.bam
     """
 }
-process run_isoquant {
+process run_isoquant_perChr {
     label 'isoquant'
 
     input:

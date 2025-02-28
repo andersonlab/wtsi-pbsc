@@ -1,4 +1,35 @@
-include {run_isoquant_firstPass; create_model_construction_bam; run_isoquant_chunked} from '../../modules/isoquant.nf'
+include {run_isoquant_firstPass; create_model_construction_bam; run_isoquant_chunked; replace_novel_names; collect_gtfs} from '../../modules/isoquant.nf'
+include {collect_counts_as_mtx_perChr as collect_isoform_counts_as_mtx_perChr} from '../../modules/isoquant.nf'
+include {collect_counts_as_mtx_perChr as collect_gene_counts_as_mtx_perChr} from '../../modules/isoquant.nf'
+include {collect_counts_as_mtx_perChr as collect_intron_include_counts_as_mtx_perChr} from '../../modules/isoquant.nf'
+include {collect_counts_as_mtx_perChr as collect_intron_exclude_counts_as_mtx_perChr} from '../../modules/isoquant.nf'
+include {collect_counts_as_mtx_perChr as collect_exon_include_counts_as_mtx_perChr} from '../../modules/isoquant.nf'
+include {collect_counts_as_mtx_perChr as collect_exon_exclude_counts_as_mtx_perChr} from '../../modules/isoquant.nf'
+
+include {collect_mtx_as_h5ad as collect_isoform_mtx_as_h5ad} from '../../modules/isoquant.nf'
+include {collect_mtx_as_h5ad as collect_gene_mtx_as_h5ad} from '../../modules/isoquant.nf'
+include {collect_mtx_as_h5ad as collect_intron_include_mtx_as_h5ad} from '../../modules/isoquant.nf'
+include {collect_mtx_as_h5ad as collect_intron_exclude_mtx_as_h5ad} from '../../modules/isoquant.nf'
+include {collect_mtx_as_h5ad as collect_exon_include_mtx_as_h5ad} from '../../modules/isoquant.nf'
+include {collect_mtx_as_h5ad as collect_exon_exclude_mtx_as_h5ad} from '../../modules/isoquant.nf'
+
+include {format_intron_exon_grouped_counts_perChr as format_intron_grouped_counts_firstPass_perChr} from '../../modules/isoquant.nf'
+include {format_intron_exon_grouped_counts_perChr as format_intron_grouped_counts_secondPass_perChr} from '../../modules/isoquant.nf'
+include {format_intron_exon_grouped_counts_perChr as format_exon_grouped_counts_firstPass_perChr} from '../../modules/isoquant.nf'
+include {format_intron_exon_grouped_counts_perChr as format_exon_grouped_counts_secondPass_perChr} from '../../modules/isoquant.nf'
+
+include {customPublish as customPublishH5ADGene} from '../../modules/customPublish.nf'
+include {customPublish as customPublishMTXGene} from '../../modules/customPublish.nf'
+include {customPublish as customPublishH5ADIsoform} from '../../modules/customPublish.nf'
+include {customPublish as customPublishMTXIsoform} from '../../modules/customPublish.nf'
+include {customPublish as customPublishNovelReadAssign} from '../../modules/customPublish.nf'
+include {customPublish as customPublishNovelCorrectedRead} from '../../modules/customPublish.nf'
+include {customPublish as customPublishNovelModelRead} from '../../modules/customPublish.nf'
+include {customPublish as customPublishKnownReadAssign} from '../../modules/customPublish.nf'
+include {customPublish as customPublishKnownCorrectedRead} from '../../modules/customPublish.nf'
+include {customPublish as customPublishExtendedGTF} from '../../modules/customPublish.nf'
+
+
 include {find_mapped_and_unmapped_regions_per_sampleChrom; acrossSamples_mapped_unmapped_regions_perChr; suggest_splits_binarySearch; split_bams_perChunk} from '../../modules/smartSplit.nf'
 
 workflow isoquant_twopass_perChr_wf {
@@ -20,7 +51,7 @@ workflow isoquant_twopass_perChr_wf {
     .combine(chrom_genedb_fasta_chr_ch,by:0)
     .set{ isoquant_secondpass_input_ch }
 
-    isoquant_secondpass_output_ch=run_isoquant_secondPass(isoquant_secondpass_input_ch)
+    isoquant_secondpass_output_ch=run_isoquant_perChr(isoquant_secondpass_input_ch)
 
 
 
@@ -30,6 +61,165 @@ workflow isoquant_twopass_perChr_wf {
 
 
 
+workflow collect_exon_intron_coutns_perChr_wf {
+  take:
+    isoquant_firstpass_output_ch
+    isoquant_output_novel_names_ch
+    bam_nums_perChr_ch
+    chunks
+  main:
+    /////////////////////////////////////////////////////////
+    //////COLLECTION INTRON/EXON GROUPED COUNTS////////////
+    /////////////////////////////////////////////////////////
+
+    /////////////////////////////////////////////////////////
+    //////A)Collecting intron grouped counts as MTX//////////
+    /////////////////////////////////////////////////////////
+
+
+    isoquant_firstpass_output_ch
+    ///.filter{tpl -> (tpl[0]=='chr2') && (tpl[1]=='Isogut15045390') }
+    .map{chrom,sample_id,isoquant_output_dir,read_assignments_f,processed_bam -> [chrom,"${sample_id}.${chrom}.intron_grouped_counts","${isoquant_output_dir}/${sample_id}.${chrom}/${sample_id}.${chrom}.intron_grouped_counts.tsv"]} | format_intron_grouped_counts_firstPass_perChr | set{firstPass_intron_grouped_formatted_ch}
+
+    isoquant_output_novel_names_ch
+    ///.filter{tpl -> tpl[1]=='chr2_137822130_165323855'}
+    .map{chrom,programmaticRegion,isoquant_output_dir -> [chrom,"${programmaticRegion}.intron_grouped_counts","${isoquant_output_dir}/${programmaticRegion}.intron_grouped_counts.tsv"]} | format_intron_grouped_counts_secondPass_perChr | set{secondPass_intron_grouped_formatted_ch}
+
+    firstPass_intron_grouped_formatted_ch
+        .combine(bam_nums_perChr_ch,by:0)
+        .map{chrom, include_f,exclude_f,chrom_sample_size -> [groupKey(chrom,chrom_sample_size),include_f]}
+        .groupTuple(by:0)
+        .map {tpl -> [tpl[0],tpl[1]]}
+        .combine(
+        secondPass_intron_grouped_formatted_ch
+            .map{chrom, prefix,intron_f -> [groupKey(chrom,chunks),intron_f]}
+            .groupTuple(by:0)
+            .map {tpl -> [tpl[0],tpl[1]]}
+        ,by:0
+        )
+        .map { chrom, firstPasslist, secondPasslist -> [chrom, firstPasslist + secondPasslist] } | collect_intron_include_counts_as_mtx_perChr | set{intron_include_mtx}
+
+        collect_intron_include_mtx_as_h5ad(intron_include_mtx.chrom_mtx | collect, 'introns_include')
+
+    firstPass_intron_grouped_formatted_ch
+        .combine(bam_nums_perChr_ch,by:0)
+        .map{chrom, include_f,exclude_f,chrom_sample_size -> [groupKey(chrom,chrom_sample_size),exclude_f]}
+        .groupTuple(by:0)
+        .map {tpl -> [tpl[0],tpl[1]]}
+        .combine(
+        secondPass_intron_grouped_formatted_ch
+            .map{chrom, prefix,intron_f -> [groupKey(chrom,chunks),intron_f]}
+            .groupTuple(by:0)
+            .map {tpl -> [tpl[0],tpl[1]]}
+        ,by:0
+        )
+        .map { chrom, firstPasslist, secondPasslist -> [chrom, firstPasslist + secondPasslist] } | collect_intron_exclude_counts_as_mtx_perChr | set{intron_exclude_mtx}
+
+        collect_intron_exclude_mtx_as_h5ad(intron_exclude_mtx.chrom_mtx | collect, 'introns_exclude')
+
+
+
+
+        /////////////////////////////////////////////////////////
+        //////A)Collecting exon grouped counts as MTX//////////
+        /////////////////////////////////////////////////////////
+
+        isoquant_firstpass_output_ch
+        ///.filter{tpl -> (tpl[0]=='chr2') && (tpl[1]=='Isogut15045390') }
+        .map{chrom,sample_id,isoquant_output_dir,read_assignments_f,processed_bam -> [chrom,"${sample_id}.${chrom}.exon_grouped_counts","${isoquant_output_dir}/${sample_id}.${chrom}/${sample_id}.${chrom}.exon_grouped_counts.tsv"]} | format_exon_grouped_counts_firstPass_perChr | set{firstPass_exon_grouped_formatted_ch}
+
+        isoquant_output_novel_names_ch
+        ///.filter{tpl -> tpl[1]=='chr2_137822130_165323855'}
+        .map{chrom,programmaticRegion,isoquant_output_dir -> [chrom,"${programmaticRegion}.exon_grouped_counts","${isoquant_output_dir}/${programmaticRegion}.exon_grouped_counts.tsv"]} | format_exon_grouped_counts_secondPass_perChr | set{secondPass_exon_grouped_formatted_ch}
+
+
+        firstPass_exon_grouped_formatted_ch
+            .combine(bam_nums_perChr_ch,by:0)
+            .map{chrom, include_f,exclude_f,chrom_sample_size -> [groupKey(chrom,chrom_sample_size),include_f]}
+            .groupTuple(by:0)
+            .map {tpl -> [tpl[0],tpl[1]]}
+            .combine(
+            secondPass_exon_grouped_formatted_ch
+                .map{chrom, prefix,exon_f -> [groupKey(chrom,chunks),exon_f]}
+                .groupTuple(by:0)
+                .map {tpl -> [tpl[0],tpl[1]]}
+            ,by:0
+            )
+            .map { chrom, firstPasslist, secondPasslist -> [chrom, firstPasslist + secondPasslist] } | collect_exon_include_counts_as_mtx_perChr | set{exon_include_mtx}
+
+            collect_exon_include_mtx_as_h5ad(exon_include_mtx.chrom_mtx | collect, 'exons_include_mtx')
+
+        firstPass_exon_grouped_formatted_ch
+            .combine(bam_nums_perChr_ch,by:0)
+            .map{chrom, include_f,exclude_f,chrom_sample_size -> [groupKey(chrom,chrom_sample_size),exclude_f]}
+            .groupTuple(by:0)
+            .map {tpl -> [tpl[0],tpl[1]]}
+            .combine(
+            secondPass_exon_grouped_formatted_ch
+                .map{chrom, prefix,exon_f -> [groupKey(chrom,chunks),exon_f]}
+                .groupTuple(by:0)
+                .map {tpl -> [tpl[0],tpl[1]]}
+            ,by:0
+            )
+            .map { chrom, firstPasslist, secondPasslist -> [chrom, firstPasslist + secondPasslist] } | collect_exon_exclude_counts_as_mtx_perChr | set{exon_exclude_mtx}
+
+            collect_exon_exclude_mtx_as_h5ad(exon_exclude_mtx.chrom_mtx | collect, 'exons_exclude_mtx')
+
+    /////////////////////////////////////////////////////////
+    //////END: COLLECTION INTRON/EXON GROUPED COUNTS////////////
+    /////////////////////////////////////////////////////////
+}
+workflow collect_gene_isoform_counts_perChr_wf {
+
+  take:
+    firstPass_ch
+    secondPass_ch
+    nums_ch
+    chunks_var
+  main:
+
+    //Collecting isoform as MTX
+    firstPass_ch
+        .combine(nums_ch,by:0)
+        .map{chrom,sample_id,isoquant_output_dir,read_assignments_f,processed_bam,chrom_sample_size -> [groupKey(chrom,chrom_sample_size),"${isoquant_output_dir}/${sample_id}.${chrom}/${sample_id}.${chrom}.transcript_grouped_counts_linear.tsv"]}
+        .groupTuple(by:0)
+        .combine(
+          secondPass_ch
+              .map{chrom,programmaticRegion,isoquant_output_dir -> [groupKey(chrom,chunks_var),"${isoquant_output_dir}/${programmaticRegion}.transcript_model_grouped_counts_linear.noknown.tsv"]}
+              .groupTuple(by:0)
+          ,by:0
+          )
+          .map { chrom, firstPasslist, secondPasslist -> [chrom, firstPasslist + secondPasslist] } | collect_isoform_counts_as_mtx_perChr | set{isoform_mtx}
+
+          isoform_h5ad=collect_isoform_mtx_as_h5ad(isoform_mtx.chrom_mtx | collect, 'isoforms')
+
+
+      //Collecting genes as MTX
+      firstPass_ch
+          .combine(nums_ch,by:0)
+          .map{chrom,sample_id,isoquant_output_dir,read_assignments_f,processed_bam,chrom_sample_size -> [groupKey(chrom,chrom_sample_size),"${isoquant_output_dir}/${sample_id}.${chrom}/${sample_id}.${chrom}.gene_grouped_counts_linear.tsv"]}
+          .groupTuple(by:0)
+          .combine(
+            secondPass_ch
+                .map{chrom,programmaticRegion,isoquant_output_dir -> [groupKey(chrom,chunks_var),"${isoquant_output_dir}/${programmaticRegion}.gene_grouped_counts_linear.tsv"]}
+                .groupTuple(by:0)
+            ,by:0
+            )
+            .map { chrom, firstPasslist, secondPasslist -> [chrom, firstPasslist + secondPasslist] } | collect_gene_counts_as_mtx_perChr | set{gene_mtx}
+
+            gene_h5ad=collect_gene_mtx_as_h5ad(gene_mtx.chrom_mtx | collect, 'genes')
+
+  emit:
+    isoform_h5ad=isoform_h5ad.h5ad_file
+    isoform_mtx=isoform_mtx.chrom_mtx
+    gene_h5ad=gene_h5ad.h5ad_file
+    gene_mtx=gene_mtx.chrom_mtx
+
+
+
+}
+
+
 workflow isoquant_twopass_chunked_wf {
   take:
     isoquant_preprocess_bam_perChr_ch
@@ -37,24 +227,45 @@ workflow isoquant_twopass_chunked_wf {
     chrom_sizes_f
     chunks
   main:
+    ///////////////////////////////////////////////////////
+    //////////////////A-FIRST PASS/////////////////////////
+    ///////////////////////////////////////////////////////
     isoqunat_firsspass_input_ch=isoquant_preprocess_bam_perChr_ch
     .combine(chrom_genedb_fasta_chr_ch,by:0)
-
+    isoqunat_firsspass_input_ch.groupTuple(by:0).map{tpl -> [tpl[0],(tpl[1]).size()]}.set{bam_nums_perChr_ch}
     isoquant_firstpass_output_ch=run_isoquant_firstPass(isoqunat_firsspass_input_ch)
     isoquant_firstpass_output_ch
     .map{ chrom,sample_id,isoquant_output_dir,read_assignment_f,bam -> [chrom,sample_id,read_assignment_f,bam] }
     .set{ model_construction_bam_input_ch }
     model_construction_bam_ch=create_model_construction_bam(model_construction_bam_input_ch)
+    ////////////////////////////////////////////////////////////
+    //////////////////END: A-FIRST PASS/////////////////////////
+    ////////////////////////////////////////////////////////////
 
+    ///////////////////////////////////////////////////////
+    //////////////////B-SECOND PASS/////////////////////////
+    ///////////////////////////////////////////////////////
     ///sharding
     mapped_unmapped_regions_tuple_ch=find_mapped_and_unmapped_regions_per_sampleChrom(model_construction_bam_ch,chrom_sizes_f)
-    mapped_unmapped_regions_tuple_ch.groupTuple().set{mapped_unmapped_regions_groupedTuple_ch}
+
+    ///adding sample size to the group key before grouping tuples so that generation of mapped_unmapped_regions_groupedTuple_ch is not blocked untill all samples/chrom is finished
+    mapped_unmapped_regions_tuple_ch
+    .combine(bam_nums_perChr_ch,by:0)
+    .map{chrom,sample_id,unmapped_bed,mapped_bed,chrom_sample_size -> [groupKey(chrom,chrom_sample_size),sample_id,unmapped_bed,mapped_bed]}
+    .groupTuple(by:0)
+    .set{mapped_unmapped_regions_groupedTuple_ch}
+
+    ///findint intersection of unmapped regions across samples per chromosome
     acrossSamples_mapped_unmapped_regions_perChr_ch=acrossSamples_mapped_unmapped_regions_perChr(mapped_unmapped_regions_groupedTuple_ch)
 
 
-    /// Merging grouped BAM tuples with mapped/unmapped BED files
-    model_construction_bam_ch.groupTuple(by:0).combine(acrossSamples_mapped_unmapped_regions_perChr_ch.mapped_bed,by:0).set { modelconstructionBam_mappedbed_tuples_ch }
-    model_construction_bam_ch.groupTuple(by:0).combine(acrossSamples_mapped_unmapped_regions_perChr_ch.unmapped_bed,by:0).set { modelconstructionBam_unmappedbed_tuples_ch }
+    /// Merging grouped BAM tuples with unmapped BED files (again adding size as groupkey)
+    model_construction_bam_ch
+    .combine(bam_nums_perChr_ch,by:0)
+    .map{chrom, sample_id,read_assignment_f, bam, chrom_sample_size -> [groupKey(chrom,chrom_sample_size),sample_id,read_assignment_f, bam]}
+    .groupTuple(by:0)
+    .combine(acrossSamples_mapped_unmapped_regions_perChr_ch.unmapped_bed,by:0)
+    .set { modelconstructionBam_unmappedbed_tuples_ch }
 
     suggested_splits_ch=suggest_splits_binarySearch(modelconstructionBam_unmappedbed_tuples_ch,chunks,chrom_sizes_f)
 
@@ -74,6 +285,8 @@ workflow isoquant_twopass_chunked_wf {
 
     /// Splitting BAMs according to suggested regions
     model_construction_bam_ch
+      .combine(bam_nums_perChr_ch,by:0)
+      .map{chrom, sample_id,read_assignment_f, bam, chrom_sample_size -> [groupKey(chrom,chrom_sample_size),sample_id,read_assignment_f, bam]}
       .groupTuple(by:0)
       .combine(chrom_region_ch,by:0)
       .set {modelconstructionBam_Region_groupedTuple_ch}
@@ -86,14 +299,96 @@ workflow isoquant_twopass_chunked_wf {
     .combine(chrom_genedb_fasta_chr_ch,by:0)
     .set {isoquant_chunked_input}
 
-
-
     isoquant_secondpass_output_ch=run_isoquant_chunked(isoquant_chunked_input)
 
+    ////////////////////////////////////////////////////////////
+    //////////////////END: B-SECOND PASS////////////////////////
+    ////////////////////////////////////////////////////////////
+
+    ///////////////////////////////////////////////////////////////////
+    //////////////////C-COLLECTING OUTPUTS////////////////////////
+    //////////////////////////////////////////////////////////////////
+    isoquant_secondpass_output_ch
+    ///.filter{tpl -> (tpl[1] == 'chr1_227459712_248956421') || (tpl[1] == 'chr1_159501669_170660798')}
+    .map{chrom,programmaticRegion,isoquant_output_dir,numReads, customLog -> [chrom,programmaticRegion,isoquant_output_dir]}
+    .set{replace_novel_names_input_ch}
+
+
+    //1-Updating names of novel transcript so they don't clash between chunks
+    isoquant_output_novel_names_ch=replace_novel_names(replace_novel_names_input_ch)
+
+    //2-Collecting genes/isoforms counts as MTX files
+    isoform_gene_mtx_h5ad=collect_gene_isoform_counts_perChr_wf(isoquant_firstpass_output_ch,isoquant_output_novel_names_ch,bam_nums_perChr_ch,chunks)
+
+
+    //3-Collecting exons/intron counts as MTX files
+    //collect_exon_intron_coutns_perChr_wf(isoquant_firstpass_output_ch,isoquant_output_novel_names_ch,bam_nums_perChr_ch,chunks)
+
+    ///4-Collecting transcript model GTFs
+    isoquant_output_novel_names_ch
+    .map{chrom,programmaticRegion,isoquant_output_dir -> "${isoquant_output_dir}/${programmaticRegion}.transcript_models.gtf"}
+    .collect()
+    .set{secondPass_collect_gtf_input_ch}
+    extended_gtf=collect_gtfs(secondPass_collect_gtf_input_ch,params.gtf_f)
+
+
+
+    ///////////////////////////////////////////////////////////////////
+    //////////////////END: C-COLLECTING OUTPUTS////////////////////////
+    //////////////////////////////////////////////////////////////////
+
+    ///////////////////////////////////////////////////////////////////
+    //////////////////D-PUBLISHING OUTPUTS////////////////////////
+    //////////////////////////////////////////////////////////////////
+    //Publishing count files
+    customPublishH5ADIsoform(isoform_gene_mtx_h5ad.isoform_h5ad,"${params.results_output}results/counts/isoform/H5AD/")
+    customPublishMTXIsoform((isoform_gene_mtx_h5ad.isoform_mtx).collect(),"${params.results_output}results/counts/isoform/MTX/")
+    customPublishH5ADGene(isoform_gene_mtx_h5ad.gene_h5ad,"${params.results_output}results/counts/gene/H5AD/")
+    customPublishMTXGene((isoform_gene_mtx_h5ad.gene_mtx).collect(),"${params.results_output}results/counts/gene/MTX/")
+
+
+    //Publishing read info files
+    isoquant_firstpass_output_ch
+    .combine(bam_nums_perChr_ch,by:0)
+    .map{chrom,sample_id,isoquant_output_dir,read_assignments_f,processed_bam,chrom_sample_size -> [groupKey(chrom,chrom_sample_size),"${isoquant_output_dir}/${sample_id}.${chrom}/${sample_id}.${chrom}.corrected_reads.bed.gz", "${isoquant_output_dir}/${sample_id}.${chrom}/${sample_id}.${chrom}.read_assignments.tsv.gz"]}
+    .groupTuple(by:0)
+    .multiMap{chrom,corr_reads,read_assign ->
+    o: "${params.results_output}results/reads_info/known/${chrom}/"
+    corr: corr_reads
+    assign: read_assign
+    }
+    .set{read_info_known_publish_ch}
+
+
+    isoquant_output_novel_names_ch
+    .map{chrom,programmaticRegion,isoquant_output_dir -> [groupKey(chrom,chunks),"${isoquant_output_dir}/${programmaticRegion}.corrected_reads.bed.gz","${isoquant_output_dir}/${programmaticRegion}.read_assignments.tsv.gz","${isoquant_output_dir}/${programmaticRegion}.transcript_model_reads.tsv.gz"]}
+    .groupTuple(by:0)
+    .multiMap{chrom,corr_reads,read_assign,model_reads ->
+    o: "${params.results_output}results/reads_info/novel/${chrom}/"
+    corr: corr_reads
+    assign: read_assign
+    model: model_reads
+    }
+    .set{read_info_novel_publish_ch}
+
+
+    customPublishNovelReadAssign(read_info_novel_publish_ch.assign, read_info_novel_publish_ch.o)
+    customPublishNovelCorrectedRead(read_info_novel_publish_ch.corr, read_info_novel_publish_ch.o)
+    customPublishNovelModelRead(read_info_novel_publish_ch.model, read_info_novel_publish_ch.o)
+
+
+    customPublishKnownReadAssign(read_info_known_publish_ch.assign,read_info_known_publish_ch.o)
+    customPublishKnownCorrectedRead(read_info_known_publish_ch.corr,read_info_known_publish_ch.o)
+
+    //Publishing GTFs
+    customPublishExtendedGTF(extended_gtf,"${params.results_output}results/gtf/")
+    ///////////////////////////////////////////////////////////////////
+    //////////////////END: C-COLLECTING OUTPUTS////////////////////////
+    //////////////////////////////////////////////////////////////////
 
 
 
 
   emit:
-    isoquant_chunked_input
+    isoqunat_firsspass_input_ch
 }

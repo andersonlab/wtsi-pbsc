@@ -5,6 +5,7 @@ nextflow.enable.dsl=2
 include { split_reads; remove_primer; tag_bam; refine_reads } from './modules/fltnc.nf'
 include { barcode_correction; dedup_reads } from './modules/barcodes.nf'
 include { pbmm2 } from './modules/pbmm2.nf'
+include {SQANTI3_QC} from './modules/sqanti3.nf'
 ///include {preprocess_bam; find_mapped_and_unmapped_regions_per_sampleChrom; acrossSamples_mapped_unmapped_regions_perChr; suggest_splits_binarySearch; split_bams; create_genedb_fasta_perChr; run_isoquant_chunked} from './modules/isoquant.nf'
 
 
@@ -118,6 +119,14 @@ workflow isoquant_twopass {
   isoquant_secondpass_output_ch=isoquant_twopass_chunked_wf(preprocessed_bam_perChr_ch,chrom_genedb_fasta_chr_ch,chrom_sizes_f,params.chunks)
 
 }
+
+workflow sqanti3 {
+
+  def input_gtf_f="${params.results_output}results/gtf/extended_annotation.gtf"
+  SQANTI3_QC(input_gtf_f,params.gtf_f,params.genome_fasta_f,params.polya_f,params.cage_peak_f,params.polya_sites,"/nfs/team152/oe2/isogut/software/SQANTI3-5.3.0/")
+
+}
+
 workflow isoquant_chunked_old {
 
 
