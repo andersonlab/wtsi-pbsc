@@ -200,7 +200,7 @@ process replace_novel_names {
     output_dir=${isoquant_output}/${programmaticRegion}_renamed/
     mkdir -p \$output_dir
 
-    query_file_suffixes=(\\
+    transcriptgenefix_file_suffixes=(\\
     .transcript_model_counts.tsv \\
     .transcript_model_grouped_counts_linear.tsv \\
     .transcript_model_grouped_counts.tsv \\
@@ -231,7 +231,13 @@ process replace_novel_names {
     .read_assignments.tsv.gz \\
     )
 
-    for suffix in \${query_file_suffixes[@]}; do
+    exonfix_file_suffixes=(\\
+    .extended_annotation.gtf \\
+    .transcript_models.gtf \\
+    )
+
+
+    for suffix in \${transcriptgenefix_file_suffixes[@]}; do
       input_f="\${input_dir}${programmaticRegion}\${suffix}"
       output_f="\${output_dir}${programmaticRegion}\${suffix}"
       sed -E "s/(transcript[0-9]+)\\.([^.]+)\\.([^.]+)/\\1.${programmaticRegion}.\\3/g; s/(novel_gene)_([^_]+)_([0-9]+)/\\1_${programmaticRegion}_\\3/g" \${input_f} > \${output_f}
@@ -241,6 +247,17 @@ process replace_novel_names {
       input_f="\${input_dir}${programmaticRegion}\${suffix}"
       output_f="\${output_dir}${programmaticRegion}\${suffix}"
       cp \${input_f} \${output_f}
+    done;
+
+    #We also need to fix exon_ids in both extended_annotation and transcript_models GTFs
+    for suffix in \${exonfix_file_suffixes[@]}; do
+      #saving exonfixed GTFs as tmp file
+      output_f_noexonfix="\${output_dir}${programmaticRegion}\${suffix}";
+      output_f_withexonfixtmp="\${output_dir}${programmaticRegion}\${suffix}.tmp";
+      bash ${baseDir}/scripts/fix_exon_ids.sh "\${output_f_noexonfix}" "\${output_f_withexonfixtmp}" "${programmaticRegion}";
+      #reverting to original name
+      rm \${output_f_noexonfix}
+      mv \${output_f_withexonfixtmp} \${output_f_noexonfix}
     done;
 
     #This should later be added to isoquant_chunked process
@@ -310,22 +327,34 @@ process collect_mtx_as_h5ad {
     """
 }
 
-///Note that there should be any duplicates in GTFs for non-overlapping regions
+///Note that there shouldn't be any duplicates in GTFs for non-overlapping regions
 process collect_gtfs {
     label 'big_job'
 
     input:
         path(query_gtf_files)
         path(ref_gtf_f)
+        path(mtx_isoform_fs, stageAs: 'isoforms/isoforms?.tsv')
+
 
     output:
         path("extended_annotation.gtf")
+        path("transcript_models.gtf")
 
     script:
     """
     query_gft_fs=(${query_gtf_files.join(' ')})
+    mtx_isoform_fs=(${mtx_isoform_fs.join(' ')})
+
+    for f in isoforms/isoforms*.tsv; do cut -f1 \$f; done | sort | uniq > all_features.csv
     for f in "\${query_gft_fs[@]}"; do echo \$f; done > query_gtf_files.txt
+
     python ${baseDir}/scripts/collect_gtfs.py -Q query_gtf_files.txt -r ${ref_gtf_f} -o extended_annotation.gtf
+    echo "Finished collecting extended annotation GTF"
+    python ${baseDir}/scripts/create_genedb.py -g extended_annotation.gtf -o extended_annotation.gtf.db
+    echo "Finished creating extended annotation DB"
+    python ${baseDir}/scripts/db_subset.py -d extended_annotation.gtf.db -i all_features.csv -o transcript_models.gtf
+    echo "Finished subsetting DB"
     """
 }
 

@@ -205,8 +205,7 @@ def main():
         query_gtf_fs=pd.read_csv(query_gtf_fofn,sep='\t',header=None)
         query_gtf_fs=query_gtf_fs[0].tolist()
 
-    print(ref_db_f)
-    print(ref_gtf_f)
+
     process_ref_db(ref_db_f,ref_gtf_f)
     query_dbs=create_feature_db_from_gtf(query_gtf_fs)
     #Based on the combination of arguments, you should use different steps. Here as a prototype, we do a full union of all databases (ref+query)
@@ -214,7 +213,6 @@ def main():
         query_dbs=process_ref_db(ref_db_f,ref_gtf_f)+query_dbs
 
     #Merging, formatting and writing. Shouldn't depend on strategy and only base on gene_dict
-    print(query_dbs)
     merged_gene_dict=merge_dbs(query_dbs)
     output_str=format_gtf_output(merged_gene_dict)
     with open(output_gtf_f, "w") as out_f:
