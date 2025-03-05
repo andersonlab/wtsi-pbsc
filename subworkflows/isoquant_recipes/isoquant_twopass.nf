@@ -28,6 +28,7 @@ include {customPublish as customPublishNovelModelRead} from '../../modules/custo
 include {customPublish as customPublishKnownReadAssign} from '../../modules/customPublish.nf'
 include {customPublish as customPublishKnownCorrectedRead} from '../../modules/customPublish.nf'
 include {customPublish as customPublishExtendedGTF} from '../../modules/customPublish.nf'
+include {customPublish as customPublishExistingGTF} from '../../modules/customPublish.nf'
 
 
 include {find_mapped_and_unmapped_regions_per_sampleChrom; acrossSamples_mapped_unmapped_regions_perChr; suggest_splits_binarySearch; split_bams_perChunk} from '../../modules/smartSplit.nf'
@@ -329,13 +330,17 @@ workflow isoquant_twopass_chunked_wf {
     .map{chrom,programmaticRegion,isoquant_output_dir -> "${isoquant_output_dir}/${programmaticRegion}.transcript_models.gtf"}
     .collect()
     .set{secondPass_collect_gtf_input_ch}
-    extended_gtf=collect_gtfs(secondPass_collect_gtf_input_ch,params.gtf_f)
 
-
+    isoform_gene_mtx_h5ad.isoform_mtx.map{mtx_dir -> "${mtx_dir}/genes.tsv"}.collect().set{mtx_isoform_fs}
+    isoform_gene_mtx_h5ad.gene_mtx.map{mtx_dir -> "${mtx_dir}/genes.tsv"}.collect().set{mtx_gene_fs}
+    gtfs=collect_gtfs(secondPass_collect_gtf_input_ch,params.gtf_f,mtx_isoform_fs)
+    extended_gtf=gtfs[0]
+    existing_gtf=gtfs[1]
 
     ///////////////////////////////////////////////////////////////////
     //////////////////END: C-COLLECTING OUTPUTS////////////////////////
     //////////////////////////////////////////////////////////////////
+
 
     ///////////////////////////////////////////////////////////////////
     //////////////////D-PUBLISHING OUTPUTS////////////////////////
@@ -382,10 +387,12 @@ workflow isoquant_twopass_chunked_wf {
 
     //Publishing GTFs
     customPublishExtendedGTF(extended_gtf,"${params.results_output}results/gtf/")
+    customPublishExistingGTF(existing_gtf,"${params.results_output}results/gtf/")
     ///////////////////////////////////////////////////////////////////
     //////////////////END: C-COLLECTING OUTPUTS////////////////////////
     //////////////////////////////////////////////////////////////////
 
+    
 
 
 

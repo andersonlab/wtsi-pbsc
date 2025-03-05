@@ -31,7 +31,7 @@ db = gffutils.FeatureDB(db_f)
 msg_counter = 0
 
 # Open output file for writing
-
+recorded_genes=[]
 with open(output_f, 'w') as out_file:
     for isoform in subset_dat[0].tolist():
         transcript = db[isoform]
@@ -39,8 +39,12 @@ with open(output_f, 'w') as out_file:
         # Write parents (should be one parent)
         num_parents=0
         for parent in db.parents(transcript):
-            if parent.id!=transcript.id:
+            if parent.id in recorded_genes:
+                gene_id=parent.id
+                print(f"SKIPPING gene record {gene_id}. Recorded already...")
+            if (parent.id!=transcript.id) and (parent.id not in recorded_genes):
                 out_file.write(str(parent) + '\n')
+                recorded_genes.append(parent.id)
                 num_parents+=1
                 if num_parents > 1:
                     print('WARNING: more than one parent',flush=True)
@@ -53,7 +57,7 @@ with open(output_f, 'w') as out_file:
             if child.id != transcript.id:
                 out_file.write(str(child) + '\n')
 
-        for child in db.children(transcript,order_by='start'):
+        for child in db.children(transcript,order_by=['featuretype','start']):
             if child.featuretype!='exon':
                 if child.id != transcript.id:
                     out_file.write(str(child) + '\n')

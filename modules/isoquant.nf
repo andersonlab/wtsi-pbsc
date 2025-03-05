@@ -340,6 +340,8 @@ process collect_gtfs {
     output:
         path("extended_annotation.gtf")
         path("transcript_models.gtf")
+        path("extended_annotation.gtf.db")
+        path("transcript_models.gtf.db")
 
     script:
     """
@@ -354,7 +356,10 @@ process collect_gtfs {
     python ${baseDir}/scripts/create_genedb.py -g extended_annotation.gtf -o extended_annotation.gtf.db
     echo "Finished creating extended annotation DB"
     python ${baseDir}/scripts/db_subset.py -d extended_annotation.gtf.db -i all_features.csv -o transcript_models.gtf
-    echo "Finished subsetting DB"
+    echo "Finished subsetting DB as GTF"
+    python ${baseDir}/scripts/create_genedb.py -g transcript_models.gtf -o transcript_models.gtf.db
+    echo "Finished converting GTF to DB"
+
     """
 }
 
