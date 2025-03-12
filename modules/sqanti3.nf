@@ -22,3 +22,22 @@ process SQANTI3_QC {
       """
 
 }
+
+process SQANTI3_FILTER {
+  label 'mini_job_local'
+  input:
+    path(classification_f)
+    path(input_gtf_f)
+    val(sqanti3_path)
+  output:
+    path("sqanti3_filter")
+  script:
+  """
+  python ${sqanti3_path}sqanti3_filter.py rules ${classification_f} -d sqanti3_filter/ -e
+  python ${baseDir}/scripts/create_genedb.py -g ${input_gtf_f} -o sqanti3_filter/${input_gtf_f}.db
+  python ${baseDir}/scripts/db_subset.py -d sqanti3_filter/${input_gtf_f}.db -i sqanti3_filter/${input_gtf_f.baseName}_inclusion-list.txt -o sqanti3_filter/${input_gtf_f.baseName}.filtered.gtf
+  python ${baseDir}/scripts/create_genedb.py -g sqanti3_filter/${input_gtf_f.baseName}.filtered.gtf -o sqanti3_filter/${input_gtf_f.baseName}.filtered.gtf.db
+
+  """
+
+}
