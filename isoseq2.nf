@@ -93,7 +93,7 @@ Channel
   .filter { it -> !(it.sample_id in excluded_samples_list) }
   .map { it ->
     def sample_id = it.sample_id
-    def bam_path = "${params.results_output}qc/mapped/${sample_id}.dedup.bam"
+    def bam_path = "${params.results_output}qc/dedup/${sample_id}.dedup.bam"//mapped to dedup
     [sample_id, bam_path]
   }
   .set { dedup_bam_tuples }

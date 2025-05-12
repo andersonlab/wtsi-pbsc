@@ -292,7 +292,7 @@ process collect_counts_as_mtx {
 }
 
 process collect_counts_as_mtx_perChr {
-    label 'big_job'
+    label 'big_job_collect'
 
     input:
         tuple val(chrom), path(isoquant_linear_count_files)
@@ -312,7 +312,7 @@ process collect_counts_as_mtx_perChr {
 }
 
 process collect_mtx_as_h5ad {
-    label 'big_job'
+    label 'big_job_collect'
 
     input:
         path(mtx_files)
@@ -329,7 +329,7 @@ process collect_mtx_as_h5ad {
 
 ///Note that there shouldn't be any duplicates in GTFs for non-overlapping regions
 process collect_gtfs {
-    label 'big_job'
+    label 'collect_gtfs'
 
     input:
         path(query_gtf_files)
