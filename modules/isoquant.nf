@@ -240,7 +240,7 @@ process replace_novel_names {
     for suffix in \${transcriptgenefix_file_suffixes[@]}; do
       input_f="\${input_dir}${programmaticRegion}\${suffix}"
       output_f="\${output_dir}${programmaticRegion}\${suffix}"
-      sed -E "s/(transcript[0-9]+)\\.([^.]+)\\.([^.]+)/\\1.${programmaticRegion}.\\3/g; s/(novel_gene)_([^_]+)_([0-9]+)/\\1_${programmaticRegion}_\\3/g" \${input_f} > \${output_f}
+      zcat -f \${input_f} | sed -E "s/(transcript[0-9]+)\\.([^.]+)\\.([^.]+)/\\1.${programmaticRegion}.\\3/g; s/(novel_gene)_([^_]+)_([0-9]+)/\\1_${programmaticRegion}_\\3/g" > \${output_f}
     done;
 
     for suffix in \${asis_file_suffixes[@]}; do
@@ -293,9 +293,11 @@ process collect_counts_as_mtx {
 
 process collect_counts_as_mtx_perChr {
     label 'big_job'
+    publishDir "${publish_dir}", mode: 'copy', overwrite: true
 
     input:
         tuple val(chrom), path(isoquant_linear_count_files)
+        val(publish_dir)
 
     output:
         path("${chrom}"), emit: chrom_mtx
@@ -309,32 +311,36 @@ process collect_counts_as_mtx_perChr {
     mkdir -p ${chrom}
     python ${baseDir}/scripts/convert_linear_counts_to_mtx.py -i ${isoquant_linear_count_files.join(' ')} -d ${chrom}/
     """
+
 }
 
 process collect_mtx_as_h5ad {
     label 'big_job'
+    publishDir "${publish_dir}", mode: 'copy', overwrite: true
 
     input:
         path(mtx_files)
         val(prefix)
+        val(publish_dir)
 
     output:
         path("${prefix}.h5ad"), emit: h5ad_file
     script:
     """
-
     python ${baseDir}/scripts/mtx_to_hda5.py -i ${mtx_files.join(' ')} -p ${prefix}
     """
+
 }
 
 ///Note that there shouldn't be any duplicates in GTFs for non-overlapping regions
 process collect_gtfs {
     label 'big_job'
-
+    publishDir "${publish_dir}", mode: 'copy', overwrite: true
     input:
         path(query_gtf_files)
         path(ref_gtf_f)
         path(mtx_isoform_fs, stageAs: 'isoforms/isoforms?.tsv')
+        val(publish_dir)
 
 
     output:
@@ -346,7 +352,6 @@ process collect_gtfs {
     script:
     """
     query_gft_fs=(${query_gtf_files.join(' ')})
-    mtx_isoform_fs=(${mtx_isoform_fs.join(' ')})
 
     for f in isoforms/isoforms*.tsv; do cut -f1 \$f; done | sort | uniq > all_features.csv
     for f in "\${query_gft_fs[@]}"; do echo \$f; done > query_gtf_files.txt
@@ -433,7 +438,7 @@ process run_isoquant_perChr {
 
 /////////Two-pass IsoQuant///////////
 process run_isoquant_firstPass {
-label 'big_job'
+label 'massive_long_job'
 
   input:
       tuple val(chrom), val(sample_id), path(bam), path(bai), path(genedb), path(fasta), path(fai)
@@ -446,6 +451,106 @@ label 'big_job'
   isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${bam} --labels ${sample_id} --data_type pacbio_ccs -o ${sample_id} -p ${sample_id}.${chrom} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format linear --bam_tags CB --no_secondary --debug --no_model_construction
   """
 }
+////////////////////
+///chrM processes///
+////////////////////
+process run_isoquant_firstPass_withmodelconstruction {
+cache = 'lenient'
+label 'massive_long_job'
+
+  input:
+      tuple val(chrom), val(sample_id), path(bam), path(bai), path(genedb), path(fasta), path(fai)
+  output:
+      tuple val(chrom), val(sample_id), path("${sample_id}/"),path("${sample_id}/${sample_id}.${chrom}/${sample_id}.${chrom}.read_assignments.tsv.gz"), path(bam)
+  script:
+  """
+  isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${bam} --labels ${sample_id} --data_type pacbio_ccs -o ${sample_id} -p ${sample_id}.${chrom} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format linear --bam_tags CB --no_secondary --debug
+  """
+}
+
+process replace_novel_names_firsPass_singlenovelname {
+    label 'micro_job'
+
+
+    input:
+      tuple val(chrom), val(sample_id), path(isoquant_output)
+
+    output:
+        tuple val(chrom), val(sample_id), path("${isoquant_output}/${sample_id}.${chrom}_renamed/")
+
+
+    script:
+    """
+    input_dir=${isoquant_output}/${sample_id}.${chrom}/
+    output_dir=${isoquant_output}/${sample_id}.${chrom}_renamed/
+    mkdir -p \$output_dir
+
+    transcriptgenefix_file_suffixes=(\\
+    .transcript_model_counts.tsv \\
+    .transcript_model_grouped_counts_linear.tsv \\
+    .transcript_model_grouped_counts.tsv \\
+    .transcript_model_grouped_tpm.tsv \\
+    .transcript_model_reads.tsv.gz \\
+    .transcript_models.gtf \\
+    .transcript_model_tpm.tsv \\
+    .transcript_tpm.tsv \\
+    .transcript_counts.tsv \\
+    .transcript_grouped_counts_linear.tsv \\
+    .transcript_grouped_counts.tsv \\
+    .transcript_grouped_tpm.tsv \\
+    .novel_vs_known.SQANTI-like.tsv \\
+    .extended_annotation.gtf \\
+    .gene_counts.tsv \\
+    .gene_grouped_counts_linear.tsv \\
+    .gene_grouped_counts.tsv \\
+    .gene_grouped_tpm.tsv \\
+    .gene_tpm.tsv \\
+    )
+
+    asis_file_suffixes=(\\
+    .intron_grouped_counts.tsv \\
+    .intron_counts.tsv \\
+    .exon_counts.tsv \\
+    .exon_grouped_counts.tsv \\
+    .corrected_reads.bed.gz \\
+    .read_assignments.tsv.gz \\
+    )
+
+    exonfix_file_suffixes=(\\
+    .extended_annotation.gtf \\
+    .transcript_models.gtf \\
+    )
+
+
+    for suffix in \${transcriptgenefix_file_suffixes[@]}; do
+      input_f="\${input_dir}${sample_id}.${chrom}\${suffix}"
+      output_f="\${output_dir}${sample_id}.${chrom}\${suffix}"
+      zcat -f \${input_f} | sed -E "s/(transcript[0-9]+)\\.([^.]+)\\.([^.]+)/\\1.\\2_${sample_id}.\\3/g; s/(novel_gene)_([^_]+)_([0-9]+)/\\1_${sample_id}_\\3/g" > \${output_f}
+    done;
+
+    for suffix in \${asis_file_suffixes[@]}; do
+      input_f="\${input_dir}${sample_id}.${chrom}\${suffix}"
+      output_f="\${output_dir}${sample_id}.${chrom}\${suffix}"
+      cp \${input_f} \${output_f}
+    done;
+
+    #We also need to fix exon_ids in both extended_annotation and transcript_models GTFs
+    for suffix in \${exonfix_file_suffixes[@]}; do
+      #saving exonfixed GTFs as tmp file
+      output_f_noexonfix="\${output_dir}${sample_id}.${chrom}\${suffix}";
+      output_f_withexonfixtmp="\${output_dir}${sample_id}.${chrom}\${suffix}.tmp";
+      bash ${baseDir}/scripts/fix_exon_ids.sh "\${output_f_noexonfix}" "\${output_f_withexonfixtmp}" "${sample_id}";
+      #reverting to original name
+      rm \${output_f_noexonfix}
+      mv \${output_f_withexonfixtmp} \${output_f_noexonfix}
+    done;
+
+    """
+}
+/////////////////////////////
+//////END: chrM processes////
+/////////////////////////////
+
 
 process create_model_construction_bam {
 label 'mini_job_local'

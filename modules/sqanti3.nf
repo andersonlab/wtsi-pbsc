@@ -1,6 +1,7 @@
 process SQANTI3_QC {
     label 'big_job'
 
+    publishDir "${params.results_output}results/transcript_info/sqanti3/", mode: 'copy', overwrite: true
 
     input:
       path(input_gtf_f)
@@ -10,7 +11,6 @@ process SQANTI3_QC {
       path(cage_peak_f)
       path(polya_sites)
       val(sqanti3_path)
-
 
     output:
       path("sqanti3_qc")
@@ -25,6 +25,9 @@ process SQANTI3_QC {
 
 process SQANTI3_FILTER {
   label 'mini_job_local'
+
+  publishDir "${params.results_output}results/transcript_info/sqanti3/", mode: 'copy', overwrite: true
+
   input:
     path(classification_f)
     path(input_gtf_f)

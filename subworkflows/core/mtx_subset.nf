@@ -8,7 +8,7 @@ workflow mtx_subset_wf {
     subset_f
   main:
     filtered_mtx_ch=MTX_SUBSET(mtx_ch,subset_f)
-    filtered_h5ad_ch=collect_filtered_isoforms_mtx_as_h5ad(filtered_mtx_ch.collect(),"isoforms")
+    filtered_h5ad_ch=collect_filtered_isoforms_mtx_as_h5ad(filtered_mtx_ch.collect(),"isoforms","${params.results_output}results/counts_sqanti3/isoform/H5AD/")
 
 
 
