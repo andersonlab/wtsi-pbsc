@@ -1,40 +1,39 @@
 process get_barcodes {
-    tag "${samplename}"    
     label 'process_low'
-       
+    
     input:
-        tuple val(sample), path(bam)
-        val(N)
+    tuple val(sample), path(bam)
+    val(N)
 
     output:
-        tuple val(sample), path(barcodes_*.txt) emit: barcodes_tuple
+    tuple val(sample), path("barcodes_*.txt"), emit: barcodes_tuple
 
     script:
-    	K=N.length()+1
+        def K = N.toString().length() + 1
         """ 
-        	samtools view ${bam} | awk '{ for(i=12;i<=NF;i++) if($i ~ /^CB:Z:/) {split($i,a,":"); print a[3]} }' | sort | uniq > tmp.txt
+        	samtools view ${bam} | awk '{ for(i=12;i<=NF;i++) if(\$i ~ /^CB:Z:/) {split(\$i,a,":"); print a[3]} }' | sort | uniq > tmp.txt
+            #samtools view ${bam} | grep -o 'CB:Z:[^[:space:]]*' | cut -d: -f3 | sort | uniq > tmp.txt
             split -n l/${N} -d -a ${K} --additional-suffix=.txt tmp.txt barcodes_
         """
 
 }
 
 process supset_bam {
-    tag "${samplename}"    
     label 'supset_bam'
        
     input:
         tuple val(sample), path(bam), path(barcodes)
 
     output:
-        tuple val(sample), path(*.splited.bam) emit: chunk_tuple
+        tuple val(sample), path("*.splited.bam"), emit: chunk_tuple
 
     script:
-    	bam_name=bam.baseName
-    	barcode_name=barcodes.baseName
+    	def bam_name=bam.baseName
+    	def barcode_name=barcodes.baseName
         """ 
             samtools view --threads ${task.cpus} --tag-file CB:${barcodes} \
                -o ${bam_name}.${barcode_name}.splited.bam ${bam}
-            samtools index -c ${bam_name}.${barcode_name}.bam
+            samtools index -c ${bam_name}.${barcode_name}.splited.bam
         """
 
 }

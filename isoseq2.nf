@@ -6,7 +6,7 @@ include { split_reads; remove_primer; tag_bam; refine_reads } from './modules/fl
 //start of changes
 //include { barcode_correction; dedup_reads } from './modules/barcodes.nf'
 include { barcode_correction} from './modules/barcodes.nf'
-include { get_barcodes; process supset_bam; process dedup_reads; process combine_dedups; process bam_stats } from './modules/test_modules.nf'
+include {get_barcodes; supset_bam; dedup_reads; combine_dedups; bam_stats} from './modules/test_modules.nf'
 //end of changes
 
 include { pbmm2 } from './modules/pbmm2.nf'
@@ -69,20 +69,20 @@ def excluded_samples_list = file(params.exclude_samples).exists() ?
 
 println "Excluded samples: $excluded_samples_list"
 
-Channel
-  .fromPath(params.input_samples_path)
-  .splitCsv(sep: ',', header: true)
-  .filter { it -> !(it.sample_id in excluded_samples_list) }
-  .map { it ->
-    def sample_id = it.sample_id
-    def bam_path = "${params.results_output}qc/refined/${sample_id}.fltnc.bam"
-    [sample_id, bam_path]
-  }
-  .set { refined_bam_tuples }
+//Channel
+  //.fromPath(params.input_samples_path)
+  //.splitCsv(sep: ',', header: true)
+  //.filter { it -> !(it.sample_id in excluded_samples_list) }
+  //.map { it ->
+  //  def sample_id = it.sample_id
+  //  def bam_path = "${params.results_output}qc/refined/${sample_id}.fltnc.bam"
+  //  [sample_id, bam_path]
+  //}
+  //.set { refined_bam_tuples }
   //start of changes
   //for test
   //barcode_corrected   = barcode_correction(refined_bam_tuples,params.threeprime_whitelist,params.barcode_correction_method,params.barcode_correction_percentile)
-
+Channel
   .fromPath(params.input_samples_path)
   .splitCsv(sep: ',', header: true)
   .filter { it -> !(it.sample_id in excluded_samples_list) }
@@ -92,24 +92,26 @@ Channel
     [sample_id, bam_path]
   }
   .set { barcode_corrected }
-  get_barcodes(barcode_corrected, params.number_of_chunks)
+barcode_corrected.view()
+get_barcodes(barcode_corrected, params.number_of_chunks)
   //get_barcodes(barcode_corrected.barcode_corrected_tuple, params.number_of_chunks)
-  //
-  barcode_channel=get_barcodes.out.barcodes_tuple.transpose()
+  ////
+barcode_channel=get_barcodes.out.barcodes_tuple.transpose()
 
-  combined_ch = barcode_corrected.barcode_corrected_tuple.combine(barcode_channel, by: 0)
+//combined_ch = barcode_corrected.barcode_corrected_tuple.combine(barcode_channel, by: 0)
+combined_ch = barcode_corrected.combine(barcode_channel, by: 0)
 
-  supset_bam(combined_ch)
+supset_bam(combined_ch)
 
-  dedup_reads(supset_bam.out.chunk_tuple)
+dedup_reads(supset_bam.out.chunk_tuple)
 
-  deduped_chunks_ch=dedup_reads.out.dedup_tuple.groupTuple()
+deduped_chunks_ch=dedup_reads.out.dedup_tuple.groupTuple()
 
-  combine_dedups(deduped_chunks_ch)
+combine_dedups(deduped_chunks_ch)
 
-  combined_dedup_ch=combine_dedups.out.dedup_tuple
+combined_dedup_ch=combine_dedups.out.dedup_tuple
 
-  bam_stats(combined_dedup_ch, params.barcode_correction_method,params.barcode_correction_percentile)
+bam_stats(combined_dedup_ch, params.barcode_correction_method,params.barcode_correction_percentile)
 
   //dedup               = dedup_reads(barcode_corrected.barcode_corrected_tuple,params.barcode_correction_method,params.barcode_correction_percentile)
   //end of changes
