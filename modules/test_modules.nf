@@ -43,6 +43,7 @@ process dedup_reads {
 
     input:
         tuple val(sample_id), path(barcode_corrected_chunk_bam)
+        val (b_size)
 
 
     output:
@@ -50,7 +51,7 @@ process dedup_reads {
 
     script:
     """
-    isoseq groupdedup  -j ${task.cpus} --keep-non-real-cells ${barcode_corrected_chunk_bam} ${barcode_corrected_chunk_bam.name.replaceAll(/\.bam/, '.dedup.bam')}
+    isoseq groupdedup  -j ${task.cpus} --batch-size ${b_size} --keep-non-real-cells ${barcode_corrected_chunk_bam} ${barcode_corrected_chunk_bam.name.replaceAll(/\.bam/, '.dedup.bam')}
 
     """
 }
