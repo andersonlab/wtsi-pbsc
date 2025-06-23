@@ -1,5 +1,5 @@
 process get_barcodes {
-    label 'process_low'
+    label 'get_barcodes'
     
     input:
     tuple val(sample), path(bam)
