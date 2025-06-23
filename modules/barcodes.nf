@@ -69,7 +69,6 @@ process dedup_reads {
         echo "Invalid barcode correction method: ${barcode_correction_method}" >&2
         exit 1
     fi;
-    samtools index -@ {task.cpus} ${sample_id}.dedup.bam
-
+    samtools index -@ ${task.cpus} ${sample_id}.dedup.bam
     """
 }

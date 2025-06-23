@@ -292,7 +292,7 @@ process collect_counts_as_mtx {
 }
 
 process collect_counts_as_mtx_perChr {
-    label 'big_job'
+    label 'big_job_collect'
     publishDir "${publish_dir}", mode: 'copy', overwrite: true
 
     input:
@@ -315,7 +315,7 @@ process collect_counts_as_mtx_perChr {
 }
 
 process collect_mtx_as_h5ad {
-    label 'big_job'
+    label 'big_job_collect'
     publishDir "${publish_dir}", mode: 'copy', overwrite: true
 
     input:
@@ -334,7 +334,7 @@ process collect_mtx_as_h5ad {
 
 ///Note that there shouldn't be any duplicates in GTFs for non-overlapping regions
 process collect_gtfs {
-    label 'big_job'
+    label 'collect_gtfs'
     publishDir "${publish_dir}", mode: 'copy', overwrite: true
     input:
         path(query_gtf_files)
