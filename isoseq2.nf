@@ -10,7 +10,7 @@ include {get_barcodes; supset_bam; dedup_reads; combine_dedups; bam_stats} from 
 //end of changes
 
 include { pbmm2 } from './modules/pbmm2.nf'
-include {SQANTI3_QC} from './modules/sqanti3.nf'
+include {SQANTI3_QC; SQANTI3_FILTER} from './modules/sqanti3.nf'
 ///include {preprocess_bam; find_mapped_and_unmapped_regions_per_sampleChrom; acrossSamples_mapped_unmapped_regions_perChr; suggest_splits_binarySearch; split_bams; create_genedb_fasta_perChr; run_isoquant_chunked} from './modules/isoquant.nf'
 
 
@@ -19,8 +19,12 @@ include {chroms} from './subworkflows/core/chroms.nf'
 include {bamsWithExclusion} from './subworkflows/core/bamsWithExclusion.nf'
 include {preprocess_bam_perChr_wf} from './subworkflows/isoquant_components/preprocess_bam.nf'
 include {genedb_perChr_wf} from './subworkflows/isoquant_components/genedb.nf'
-include {isoquant_twopass_perChr_wf; isoquant_twopass_chunked_wf} from './subworkflows/isoquant_recipes/isoquant_twopass.nf'
+include {isoquant_twopass_perChr_wf; isoquant_twopass_chunked_wf; isoquant_chrM;collect_output_wf} from './subworkflows/isoquant_recipes/isoquant_twopass.nf'
+include {mtx_subset_wf} from './subworkflows/core/mtx_subset.nf'
 
+
+include {customPublish as customPublishFilteredH5ADIsoform} from './modules/customPublish.nf'
+include {customPublish as customPublishFilteredMTXIsoform} from  './modules/customPublish.nf'
 
 
 /// Setting default parameters
@@ -131,7 +135,7 @@ workflow isoquant_twopass {
 
   def chromosomes_list = ['chr1', 'chr2', 'chr3', 'chr4', 'chr5', 'chr6', 'chr7', 'chr8', 'chr9',
                           'chr10', 'chr11', 'chr12', 'chr13', 'chr14', 'chr15', 'chr16', 'chr17',
-                          'chr18', 'chr19', 'chr20', 'chr21', 'chr22', 'chrX', 'chrY']
+                          'chr18', 'chr19', 'chr20', 'chr21', 'chr22', 'chrX', 'chrY','chrM']
   ///def chromosomes_list = ['chr22']
 
   chrom_ch=chroms(chromosomes_list)
@@ -140,14 +144,46 @@ workflow isoquant_twopass {
   ///.filter{tpl -> (tpl[0]=='Isogut14548280') || (tpl[0]=='Isogut14548279') || (tpl[0]=='Isogut14548278') || (tpl[0]=='Isogut14548277') || (tpl[0]=='Isogut14548276') || (tpl[0]=='Isogut14548275')}
   chrom_genedb_fasta_chr_ch=genedb_perChr_wf(chrom_ch,params.gtf_f,params.genome_fasta_f)
   preprocessed_bam_perChr_ch=preprocess_bam_perChr_wf(chrom_ch,fullBam_ch)
-  isoquant_secondpass_output_ch=isoquant_twopass_chunked_wf(preprocessed_bam_perChr_ch,chrom_genedb_fasta_chr_ch,chrom_sizes_f,params.chunks)
 
+  //Processing chrM separately
+  preprocessed_bam_perChr_ch.filter{chrom,sample_id,bam,bai -> chrom=="chrM"}.set{preprocessed_bam_chrM_ch}
+  chrom_genedb_fasta_chr_ch.filter{chrom,gene_db,fa,fai -> chrom=="chrM"}.set{chrom_genedb_fasta_chrM_ch}
+  chrM_output_chs=isoquant_chrM(preprocessed_bam_chrM_ch,chrom_genedb_fasta_chrM_ch,chrom_sizes_f)
+
+  //Processing other chromosomes separately
+  preprocessed_bam_perChr_ch.filter{chrom,sample_id,bam,bai -> chrom!="chrM"}.set{preprocessed_bam_nochrM_ch}
+  chrom_genedb_fasta_chr_ch.filter{chrom,gene_db,fa,fai -> chrom!="chrM"}.set{chrom_genedb_fasta_nochrM_ch}
+  nochrM_output_chs=isoquant_twopass_chunked_wf(preprocessed_bam_nochrM_ch,chrom_genedb_fasta_nochrM_ch,chrom_sizes_f,params.chunks)
+
+  //Collecting output: MTX, GTF, reads
+  collect_output_wf(
+  (nochrM_output_chs.isoform_counts).concat(chrM_output_chs.isoform_counts),
+  (nochrM_output_chs.gene_counts).concat(chrM_output_chs.gene_counts),
+  (nochrM_output_chs.existing_gtf).concat(chrM_output_chs.existing_gtf),
+  (nochrM_output_chs.extended_gtf).concat(chrM_output_chs.extended_gtf),
+  (nochrM_output_chs.assignment_reads).concat(chrM_output_chs.assignment_reads),
+  (nochrM_output_chs.transcriptmodel_reads).concat(chrM_output_chs.transcriptmodel_reads),
+  (nochrM_output_chs.corrected_reads).concat(chrM_output_chs.corrected_reads)
+  )
 }
 
 workflow sqanti3 {
 
-  def input_gtf_f="${params.results_output}results/gtf/extended_annotation.gtf"
-  SQANTI3_QC(input_gtf_f,params.gtf_f,params.genome_fasta_f,params.polya_f,params.cage_peak_f,params.polya_sites,"/nfs/team152/oe2/isogut/software/SQANTI3-5.3.0/")
+
+  def input_gtf_f="${params.results_output}results/gtf/transcript_models.gtf"
+  sqanti3_qc_ch=SQANTI3_QC(input_gtf_f,params.gtf_f,params.genome_fasta_f,params.polya_f,params.cage_peak_f,params.polya_sites,"/nfs/team152/oe2/isogut/software/SQANTI3-5.3.0/")
+  sqanti3_filter_ch=SQANTI3_FILTER(sqanti3_qc_ch.map{output_dir -> "${output_dir}/transcript_models_classification.txt"},input_gtf_f,params.sqanti3_path)
+
+  sqanti3_qc_ch.view()
+  Channel
+  .fromPath("${params.results_output}results/counts/isoform/MTX/*/matrix.mtx")
+  .map{it -> it.parent}
+  .set{prefiltered_mtx_dir_ch}
+  mtx_subset_output_ch=mtx_subset_wf(prefiltered_mtx_dir_ch,sqanti3_filter_ch.map{sqanti3_filter_dir -> "${sqanti3_filter_dir}/transcript_models_inclusion-list.txt"})
+  mtx_subset_output_ch.h5ad_file.view()
+
+///  customPublishFilteredH5ADIsoform(mtx_subset_output_ch.h5ad_file,"${params.results_output}results/counts_sqanti3/isoform/H5AD/")
+///  customPublishFilteredMTXIsoform((mtx_subset_output_ch.isoform_mtx).collect(),"${params.results_output}results/counts_sqanti3/isoform/MTX/")
 
 }
 
