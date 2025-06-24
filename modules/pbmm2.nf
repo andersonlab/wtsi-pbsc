@@ -7,7 +7,7 @@ process pbmm2 {
         val genome_fasta_f
 
     output:
-        path "*"
+        tuple val(sample_id), path("${sample_id}.mapped.realcells_only.bam"), path("${sample_id}.mapped.realcells_only.bam.bai")
 
     script:
     """

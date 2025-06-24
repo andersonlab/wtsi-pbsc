@@ -12,7 +12,7 @@ include {get_barcodes; supset_bam; dedup_reads; combine_dedups; bam_stats} from 
 include { pbmm2 } from './modules/pbmm2.nf'
 include {SQANTI3_QC} from './modules/sqanti3.nf'
 ///include {preprocess_bam; find_mapped_and_unmapped_regions_per_sampleChrom; acrossSamples_mapped_unmapped_regions_perChr; suggest_splits_binarySearch; split_bams; create_genedb_fasta_perChr; run_isoquant_chunked} from './modules/isoquant.nf'
-
+include { mpileup; cellsnp }  from './modules/deconvolution.nf'
 
 ///Subworkflows
 include {chroms} from './subworkflows/core/chroms.nf'
@@ -133,6 +133,8 @@ workflow map_pbmm2 {
     //   .set { dedup_bam_tuples }
       dedup_bam_tuples.view()
       mapped_reads         = pbmm2(dedup_bam_tuples,params.genome_fasta_f)
+    emit:
+      mapped_reads
 }
 
 
@@ -161,13 +163,23 @@ workflow sqanti3 {
 
 }
 
+workflow deconvolution{
+  take:
+    mapped_reads
+  main:
+    mpileup_out_chanel = mpileup(mapped_reads,params.genome_fasta_f)
+    cellsnp(mpileup_out_chanel)
+    // vireo()
+    // bam_split_per_donor()
+
+}
 
 workflow full{
 
   fltnc()
   correct_barcodes(fltnc.out.refined_bam_tuples)
   map_pbmm2(correct_barcodes.out.dedup_bam_tuples)
-
+  deconvolution(map_pbmm2.out.mapped_reads)
 }
 
 workflow isoquant_chunked_old {
