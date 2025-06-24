@@ -3,7 +3,7 @@ process pbmm2 {
     publishDir "${params.results_output}qc/mapped", mode: 'copy'
 
     input:
-        tuple val(sample_id), path(dedup_bam)
+        tuple val(sample_id), path(dedup_bam), path(bam_bai)
         val genome_fasta_f
 
     output:
