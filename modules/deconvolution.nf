@@ -56,12 +56,14 @@ process cellsnp {
 process vireo {
     label 'deduplication'
 
-    container "${params.eqtl_container}"
+    container "/software/hgi/containers/yascp/yascp.cog.sanger.ac.uk-public-yascp_qc_jan_2025.sif"
 
     publishDir "${params.results_output}results/deconvolution/vireo", mode: 'copy'
 
     input:
         tuple val(sample_id),path(cellsnp),val(nr_samples)
+    output:
+        tuple val(sample_id), path("barcodes__*.tsv"), emit: barcodes_tuple
 
     script:
     """
@@ -73,6 +75,9 @@ process vireo {
         --randSeed 1 \
         --nInit 200 \
         -p 15
+
+        #Split the donor barcodes in an independent files for next step of bam splits.
+        awk 'NR > 1 && \$2 != "unassigned" && \$2 != "doublet" {print > ("barcodes__" \$2 ".tsv")}' vireo__${sample_id}/donor_ids.tsv
     """
 }
 

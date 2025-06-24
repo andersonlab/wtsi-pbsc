@@ -38,6 +38,26 @@ process supset_bam {
 
 }
 
+process supset_bam_with_bai {
+    label 'supset_bam'
+       
+    input:
+        tuple val(sample), path(bam), path(bai), path(barcodes)
+
+    output:
+        tuple val(sample), path("*.splited.bam"), emit: chunk_tuple
+
+    script:
+    	def bam_name=bam.baseName
+    	def barcode_name=barcodes.baseName
+        """ 
+            samtools view --threads ${task.cpus} --tag-file CB:${barcodes} \
+               -o ${bam_name}.${barcode_name}.splited.bam ${bam}
+            samtools index -c ${bam_name}.${barcode_name}.splited.bam
+        """
+
+}
+
 process dedup_reads {
     label 'deduplication'
 

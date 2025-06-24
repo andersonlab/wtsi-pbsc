@@ -6,13 +6,13 @@ include { split_reads; remove_primer; tag_bam; refine_reads } from './modules/fl
 //start of changes
 //include { barcode_correction; dedup_reads } from './modules/barcodes.nf'
 include { barcode_correction} from './modules/barcodes.nf'
-include {get_barcodes; supset_bam; dedup_reads; combine_dedups; bam_stats} from './modules/test_modules.nf'
+include {get_barcodes; supset_bam; supset_bam_with_bai; dedup_reads; combine_dedups; bam_stats} from './modules/test_modules.nf'
 //end of changes
 
 include { pbmm2 } from './modules/pbmm2.nf'
 include {SQANTI3_QC} from './modules/sqanti3.nf'
 ///include {preprocess_bam; find_mapped_and_unmapped_regions_per_sampleChrom; acrossSamples_mapped_unmapped_regions_perChr; suggest_splits_binarySearch; split_bams; create_genedb_fasta_perChr; run_isoquant_chunked} from './modules/isoquant.nf'
-include { mpileup; cellsnp }  from './modules/deconvolution.nf'
+include { mpileup; cellsnp; vireo }  from './modules/deconvolution.nf'
 
 ///Subworkflows
 include {chroms} from './subworkflows/core/chroms.nf'
@@ -91,7 +91,6 @@ workflow correct_barcodes {
     barcode_channel=get_barcodes.out.barcodes_tuple.transpose()
 
     combined_ch = barcode_corrected.barcode_corrected_tuple.combine(barcode_channel, by: 0)
-    //combined_ch = barcode_corrected.combine(barcode_channel, by: 0)
 
     supset_bam(combined_ch)
 
@@ -168,9 +167,21 @@ workflow deconvolution{
     mapped_reads
   main:
     mpileup_out_chanel = mpileup(mapped_reads,params.genome_fasta_f)
-    cellsnp(mpileup_out_chanel)
-    // vireo()
-    // bam_split_per_donor()
+    cellsnp_out = cellsnp(mpileup_out_chanel)
+
+    Channel
+      .fromPath(params.input_samples_path)
+      .splitCsv(sep: ',', header: true)
+      .map { it -> [it.sample_id, it.nr_samples_multiplexed] } // Create a tuple with bam_path and sample_id
+      .set { sampleNames_nrDons }
+
+    sampleNames_cellsnp_nrDons = cellsnp_out.combine(sampleNames_nrDons, by: 0)
+    vireo(sampleNames_cellsnp_nrDons)
+    
+    barcode_channel=vireo.out.barcodes_tuple.transpose()
+    combined_ch = mapped_reads.combine(barcode_channel, by: 0)
+    supset_bam_with_bai(combined_ch)
+
 
 }
 
