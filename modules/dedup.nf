@@ -16,7 +16,6 @@ process dedup_reads {
 
     script:
     """
-    echo "test"
     isoseq groupdedup -j ${task.cpus} --keep-non-real-cells ${sorted_barcodes_bam} \$sample_name.dedup.bam
     isoseq bcstats -j ${task.cpus} --method ${params.barcode_correction_method} --json \$sample_name.dedup.json -o \$sample_name.dedup.tsv ${dedup_bam}
     samtools index \$sample_name.dedup.bam

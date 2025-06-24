@@ -3,11 +3,7 @@ nextflow.enable.dsl=2
 
 ///Modules
 include { split_reads; remove_primer; tag_bam; refine_reads } from './modules/fltnc.nf'
-//start of changes
-//include { barcode_correction; dedup_reads } from './modules/barcodes.nf'
-include { barcode_correction} from './modules/barcodes.nf'
-include {get_barcodes; supset_bam; dedup_reads; combine_dedups; bam_stats} from './modules/test_modules.nf'
-//end of changes
+include {barcode_correction; get_barcodes; supset_bam; dedup_reads; combine_dedups; bam_stats} from './modules/barcodes.nf'
 
 include { pbmm2 } from './modules/pbmm2.nf'
 include {SQANTI3_QC; SQANTI3_FILTER} from './modules/sqanti3.nf'
@@ -42,9 +38,6 @@ if(!params.exclude_samples) {
 if(params.chunks) {
   chrom_sizes_f=params.nf_basedir+"data/hg38.chrom.sizes"
 }
-
-
-
 
 /// This QC workflow will do the pre-processing in: https://isoseq.how/umi/cli-workflow.html
 workflow fltnc {
