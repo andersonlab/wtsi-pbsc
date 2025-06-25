@@ -3,7 +3,8 @@ nextflow.enable.dsl=2
 
 ///Modules
 include { split_reads; remove_primer; tag_bam; refine_reads } from './modules/fltnc.nf'
-include { barcode_correction; dedup_reads } from './modules/barcodes.nf'
+include {barcode_correction; get_barcodes; supset_bam; dedup_reads; combine_dedups; bam_stats} from './modules/barcodes.nf'
+
 include { pbmm2 } from './modules/pbmm2.nf'
 include {SQANTI3_QC; SQANTI3_FILTER} from './modules/sqanti3.nf'
 ///include {preprocess_bam; find_mapped_and_unmapped_regions_per_sampleChrom; acrossSamples_mapped_unmapped_regions_perChr; suggest_splits_binarySearch; split_bams; create_genedb_fasta_perChr; run_isoquant_chunked} from './modules/isoquant.nf'
@@ -37,9 +38,6 @@ if(!params.exclude_samples) {
 if(params.chunks) {
   chrom_sizes_f=params.nf_basedir+"data/hg38.chrom.sizes"
 }
-
-
-
 
 /// This QC workflow will do the pre-processing in: https://isoseq.how/umi/cli-workflow.html
 workflow fltnc {
@@ -78,8 +76,27 @@ Channel
     [sample_id, bam_path]
   }
   .set { refined_bam_tuples }
-  barcode_corrected   = barcode_correction(refined_bam_tuples,params.threeprime_whitelist,params.barcode_correction_method,params.barcode_correction_percentile)
-  dedup               = dedup_reads(barcode_corrected.barcode_corrected_tuple,params.barcode_correction_method,params.barcode_correction_percentile)
+
+barcode_corrected   = barcode_correction(refined_bam_tuples,params.threeprime_whitelist,params.barcode_correction_method,params.barcode_correction_percentile)
+
+get_barcodes(barcode_corrected.barcode_corrected_tuple, params.number_of_chunks)
+  ////
+barcode_channel=get_barcodes.out.barcodes_tuple.transpose()
+
+combined_ch = barcode_corrected.barcode_corrected_tuple.combine(barcode_channel, by: 0)
+//combined_ch = barcode_corrected.combine(barcode_channel, by: 0)
+
+supset_bam(combined_ch)
+
+dedup_reads(supset_bam.out.chunk_tuple, params.dedup_batch_size)
+
+deduped_chunks_ch=dedup_reads.out.dedup_tuple.groupTuple()
+
+combine_dedups(deduped_chunks_ch)
+
+combined_dedup_ch=combine_dedups.out.dedup_tuple
+
+bam_stats(combined_dedup_ch, params.barcode_correction_method,params.barcode_correction_percentile)
 
 }
 
@@ -97,7 +114,7 @@ Channel
   .filter { it -> !(it.sample_id in excluded_samples_list) }
   .map { it ->
     def sample_id = it.sample_id
-    def bam_path = "${params.results_output}qc/mapped/${sample_id}.dedup.bam"
+    def bam_path = "${params.results_output}qc/dedup/${sample_id}.dedup.bam"//mapped to dedup
     [sample_id, bam_path]
   }
   .set { dedup_bam_tuples }

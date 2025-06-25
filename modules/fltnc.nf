@@ -15,7 +15,7 @@ process split_reads {
       path "${sample_id}.segmented.read_lengths.csv"
     script:
     """
-    pbskera -j ${task.cpus} split ${input_bam} ${skera_primers} ${sample_id}.segmented.bam
+    pbskera split -j ${task.cpus} ${input_bam} ${skera_primers} ${sample_id}.segmented.bam
     """
 
     stub:
@@ -52,7 +52,7 @@ process remove_primer {
 }
 
 process tag_bam {
-    label 'remove_primer'
+    label 'tag_bam'
 
     input:
       tuple val(sample_id), path(primer_removed_bam)
@@ -73,7 +73,7 @@ process tag_bam {
 }
 
 process refine_reads {
-    label 'remove_primer'
+    label 'refine_reads'
 
     publishDir "${params.results_output}qc/refined", mode: 'copy'
 
