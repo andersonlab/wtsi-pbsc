@@ -52,10 +52,10 @@ workflow fltnc {
     	.set { hifi_bam_tuples }
 
     /// Every process from now on outputs a (sample_id,bam_file) tuple which is fed on to the next process
-    reads_split           = split_reads(hifi_bam_tuples,params.skera_primers)
-    primer_removed        = remove_primer(reads_split.split_reads_tuple,params.tenx_primers)
-    tagged                = tag_bam(primer_removed.removed_primer_tuple)
-    refined_reads         = refine_reads(tagged.tagged_tuple,params.tenx_primers,params.min_polya_length)
+    //reads_split           = split_reads(hifi_bam_tuples,params.skera_primers)
+    //primer_removed        = remove_primer(reads_split.split_reads_tuple,params.tenx_primers)
+    //tagged                = tag_bam(primer_removed.removed_primer_tuple)
+    //refined_reads         = refine_reads(tagged.tagged_tuple,params.tenx_primers,params.min_polya_length)
     /// refined_bam_stats = postrefine_stats(refined_reads.refined_bam)
 }
 
@@ -105,7 +105,24 @@ Channel
   mapped_reads         = pbmm2(dedup_bam_tuples,params.genome_fasta_f)
 }
 
+#############################
+#Different IsoQuant Worflows#
+#############################
+workflow isoquant_perchr {
+  def chromosomes_list = ['chr1', 'chr2', 'chr3', 'chr4', 'chr5', 'chr6', 'chr7', 'chr8', 'chr9',
+                          'chr10', 'chr11', 'chr12', 'chr13', 'chr14', 'chr15', 'chr16', 'chr17',
+                          'chr18', 'chr19', 'chr20', 'chr21', 'chr22', 'chrX', 'chrY','chrM']
+  ///def chromosomes_list = ['chr22']
 
+  chrom_ch=chroms(chromosomes_list)
+  ///.filter{chrom -> chrom=='chr2' }
+  fullBam_ch=bamsWithExclusion()
+  ///.filter{tpl -> (tpl[0]=='Isogut14548280') || (tpl[0]=='Isogut14548279') || (tpl[0]=='Isogut14548278') || (tpl[0]=='Isogut14548277') || (tpl[0]=='Isogut14548276') || (tpl[0]=='Isogut14548275')}
+  chrom_genedb_fasta_chr_ch=genedb_perChr_wf(chrom_ch,params.gtf_f,params.genome_fasta_f)
+  preprocessed_bam_perChr_ch=preprocess_bam_perChr_wf(chrom_ch,fullBam_ch)
+
+  //TODO: implement isoquant_twopass_perChr_wf
+}
 workflow isoquant_twopass {
 
 
