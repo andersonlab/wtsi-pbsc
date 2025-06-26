@@ -45,11 +45,11 @@ process supset_bam_with_bai {
         tuple val(sample), path(bam), path(bai), path(barcodes)
 
     output:
-        tuple val(sample), path("*.splited.bam"), emit: chunk_tuple
+        tuple val({ "${sample}___${barcodes.simpleName.replaceFirst('barcodes__','')}" }), path("*.splited.bam"), path("*.splited.bam.csi"), emit: per_donor_tuple
 
     script:
     	def bam_name=bam.baseName
-    	def barcode_name=barcodes.baseName
+    	def barcode_name=barcodes.baseName.replaceAll('barcodes__','')
         """ 
             samtools view --threads ${task.cpus} --tag-file CB:${barcodes} \
                -o ${bam_name}.${barcode_name}.splited.bam ${bam}

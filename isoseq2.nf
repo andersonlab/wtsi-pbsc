@@ -139,19 +139,22 @@ workflow map_pbmm2 {
 
 workflow isoquant_twopass {
 
+  take:
+    fullBam_ch
+  main:
 
-  def chromosomes_list = ['chr1', 'chr2', 'chr3', 'chr4', 'chr5', 'chr6', 'chr7', 'chr8', 'chr9',
-                          'chr10', 'chr11', 'chr12', 'chr13', 'chr14', 'chr15', 'chr16', 'chr17',
-                          'chr18', 'chr19', 'chr20', 'chr21', 'chr22', 'chrX', 'chrY']
-  ///def chromosomes_list = ['chr22']
+    def chromosomes_list = ['chr1', 'chr2', 'chr3', 'chr4', 'chr5', 'chr6', 'chr7', 'chr8', 'chr9',
+                            'chr10', 'chr11', 'chr12', 'chr13', 'chr14', 'chr15', 'chr16', 'chr17',
+                            'chr18', 'chr19', 'chr20', 'chr21', 'chr22', 'chrX', 'chrY']
+    ///def chromosomes_list = ['chr22']
 
-  chrom_ch=chroms(chromosomes_list)
-  ///.filter{chrom -> chrom=='chr2' }
-  fullBam_ch=bamsWithExclusion()
-  ///.filter{tpl -> (tpl[0]=='Isogut14548280') || (tpl[0]=='Isogut14548279') || (tpl[0]=='Isogut14548278') || (tpl[0]=='Isogut14548277') || (tpl[0]=='Isogut14548276') || (tpl[0]=='Isogut14548275')}
-  chrom_genedb_fasta_chr_ch=genedb_perChr_wf(chrom_ch,params.gtf_f,params.genome_fasta_f)
-  preprocessed_bam_perChr_ch=preprocess_bam_perChr_wf(chrom_ch,fullBam_ch)
-  isoquant_secondpass_output_ch=isoquant_twopass_chunked_wf(preprocessed_bam_perChr_ch,chrom_genedb_fasta_chr_ch,chrom_sizes_f,params.chunks)
+    chrom_ch=chroms(chromosomes_list)
+    ///.filter{chrom -> chrom=='chr2' }
+    // fullBam_ch=bamsWithExclusion()
+    ///.filter{tpl -> (tpl[0]=='Isogut14548280') || (tpl[0]=='Isogut14548279') || (tpl[0]=='Isogut14548278') || (tpl[0]=='Isogut14548277') || (tpl[0]=='Isogut14548276') || (tpl[0]=='Isogut14548275')}
+    chrom_genedb_fasta_chr_ch=genedb_perChr_wf(chrom_ch,params.gtf_f,params.genome_fasta_f)
+    preprocessed_bam_perChr_ch=preprocess_bam_perChr_wf(chrom_ch,fullBam_ch)
+    isoquant_secondpass_output_ch=isoquant_twopass_chunked_wf(preprocessed_bam_perChr_ch,chrom_genedb_fasta_chr_ch,chrom_sizes_f,params.chunks)
 
 }
 
@@ -181,7 +184,10 @@ workflow deconvolution{
     barcode_channel=vireo.out.barcodes_tuple.transpose()
     combined_ch = mapped_reads.combine(barcode_channel, by: 0)
     supset_bam_with_bai(combined_ch)
+    fullBam_ch = supset_bam_with_bai.out.per_donor_tuple
 
+  emit:
+    fullBam_ch
 
 }
 
@@ -191,6 +197,7 @@ workflow full{
   correct_barcodes(fltnc.out.refined_bam_tuples)
   map_pbmm2(correct_barcodes.out.dedup_bam_tuples)
   deconvolution(map_pbmm2.out.mapped_reads)
+  isoquant_twopass(deconvolution.out.fullBam_ch)
 }
 
 workflow isoquant_chunked_old {
