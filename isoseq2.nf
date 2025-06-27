@@ -8,7 +8,7 @@ include {barcode_correction; get_barcodes; supset_bam; dedup_reads; combine_dedu
 include { pbmm2 } from './modules/pbmm2.nf'
 include {SQANTI3_QC; SQANTI3_FILTER} from './modules/sqanti3.nf'
 ///include {preprocess_bam; find_mapped_and_unmapped_regions_per_sampleChrom; acrossSamples_mapped_unmapped_regions_perChr; suggest_splits_binarySearch; split_bams; create_genedb_fasta_perChr; run_isoquant_chunked} from './modules/isoquant.nf'
-
+include { mpileup; cellsnp; vireo }  from './modules/deconvolution.nf'
 
 ///Subworkflows
 include {chroms} from './subworkflows/core/chroms.nf'
@@ -41,90 +41,104 @@ if(params.chunks) {
 
 /// This QC workflow will do the pre-processing in: https://isoseq.how/umi/cli-workflow.html
 workflow fltnc {
+    main:
+      /// Obtaining (sample_id,bam_file) tuples from the input_samples.csv file
+      Channel
+        .fromPath(params.input_samples_path)
+        .splitCsv(sep: ',', header: true)
+        .map { it -> [it.sample_id, it.long_read_path] } // Create a tuple with bam_path and sample_id
+        .set { hifi_bam_tuples }
 
-    /// Obtaining (sample_id,bam_file) tuples from the input_samples.csv file
-    Channel
-    	.fromPath(params.input_samples_path)
-    	.splitCsv(sep: ',', header: true)
-    	.map { it -> [it.sample_id, it.long_read_path] } // Create a tuple with bam_path and sample_id
-    	.set { hifi_bam_tuples }
-
-    /// Every process from now on outputs a (sample_id,bam_file) tuple which is fed on to the next process
-    reads_split           = split_reads(hifi_bam_tuples,params.skera_primers)
-    primer_removed        = remove_primer(reads_split.split_reads_tuple,params.tenx_primers)
-    tagged                = tag_bam(primer_removed.removed_primer_tuple)
-    refined_reads         = refine_reads(tagged.tagged_tuple,params.tenx_primers,params.min_polya_length)
-    /// refined_bam_stats = postrefine_stats(refined_reads.refined_bam)
+      /// Every process from now on outputs a (sample_id,bam_file) tuple which is fed on to the next process
+      reads_split           = split_reads(hifi_bam_tuples,params.skera_primers)
+      primer_removed        = remove_primer(reads_split.split_reads_tuple,params.tenx_primers)
+      tagged                = tag_bam(primer_removed.removed_primer_tuple)
+      refined_bam_tuples         = refine_reads(tagged.tagged_tuple,params.tenx_primers,params.min_polya_length)
+      /// refined_bam_stats = postrefine_stats(refined_reads.refined_bam)
+    emit:
+      refined_bam_tuples
 }
 
 
 
 workflow correct_barcodes {
+  take:
+    refined_bam_tuples
+  main:
+      def excluded_samples_list = file(params.exclude_samples).exists() ?
+        file(params.exclude_samples).text.split('\n').drop(1).collect { it.split(',')[0].trim() } : []
 
-def excluded_samples_list = file(params.exclude_samples).exists() ?
-  file(params.exclude_samples).text.split('\n').drop(1).collect { it.split(',')[0].trim() } : []
+      println "Excluded samples: $excluded_samples_list"
 
-println "Excluded samples: $excluded_samples_list"
+    // Channel
+    //   .fromPath(params.input_samples_path)
+    //   .splitCsv(sep: ',', header: true)
+    //   .filter { it -> !(it.sample_id in excluded_samples_list) }
+    //   .map { it ->
+    //     def sample_id = it.sample_id
+    //     def bam_path = "${params.results_output}qc/refined/${sample_id}.fltnc.bam"
+    //     [sample_id, bam_path]
+    //   }
+    //   .set { refined_bam_tuples }
 
-Channel
-  .fromPath(params.input_samples_path)
-  .splitCsv(sep: ',', header: true)
-  .filter { it -> !(it.sample_id in excluded_samples_list) }
-  .map { it ->
-    def sample_id = it.sample_id
-    def bam_path = "${params.results_output}qc/refined/${sample_id}.fltnc.bam"
-    [sample_id, bam_path]
-  }
-  .set { refined_bam_tuples }
+    barcode_corrected   = barcode_correction(refined_bam_tuples,params.threeprime_whitelist,params.barcode_correction_method,params.barcode_correction_percentile)
 
-barcode_corrected   = barcode_correction(refined_bam_tuples,params.threeprime_whitelist,params.barcode_correction_method,params.barcode_correction_percentile)
+    get_barcodes(barcode_corrected.barcode_corrected_tuple, params.number_of_chunks)
+      ////
+    barcode_channel=get_barcodes.out.barcodes_tuple.transpose()
 
-get_barcodes(barcode_corrected.barcode_corrected_tuple, params.number_of_chunks)
-  ////
-barcode_channel=get_barcodes.out.barcodes_tuple.transpose()
+    combined_ch = barcode_corrected.barcode_corrected_tuple.combine(barcode_channel, by: 0)
 
-combined_ch = barcode_corrected.barcode_corrected_tuple.combine(barcode_channel, by: 0)
-//combined_ch = barcode_corrected.combine(barcode_channel, by: 0)
+    supset_bam(combined_ch)
 
-supset_bam(combined_ch)
+    dedup_reads(supset_bam.out.chunk_tuple, params.dedup_batch_size)
 
-dedup_reads(supset_bam.out.chunk_tuple, params.dedup_batch_size)
+    deduped_chunks_ch=dedup_reads.out.dedup_tuple.groupTuple()
 
-deduped_chunks_ch=dedup_reads.out.dedup_tuple.groupTuple()
+    combine_dedups(deduped_chunks_ch)
 
-combine_dedups(deduped_chunks_ch)
+    combined_dedup_ch=combine_dedups.out.dedup_tuple
 
-combined_dedup_ch=combine_dedups.out.dedup_tuple
+    dedup_bam_tuples = bam_stats(combined_dedup_ch, params.barcode_correction_method,params.barcode_correction_percentile)
 
-bam_stats(combined_dedup_ch, params.barcode_correction_method,params.barcode_correction_percentile)
+  emit:
+    dedup_bam_tuples
 
 }
 
 
+
 workflow map_pbmm2 {
+  take:
+    dedup_bam_tuples
+  main:
+    def excluded_samples_list = file(params.exclude_samples).exists() ?
+      file(params.exclude_samples).text.split('\n').drop(1).collect { it.split(',')[0].trim() } : []
 
-def excluded_samples_list = file(params.exclude_samples).exists() ?
-  file(params.exclude_samples).text.split('\n').drop(1).collect { it.split(',')[0].trim() } : []
+    println "Excluded samples: $excluded_samples_list"
 
-println "Excluded samples: $excluded_samples_list"
-
-Channel
-  .fromPath(params.input_samples_path)
-  .splitCsv(sep: ',', header: true)
-  .filter { it -> !(it.sample_id in excluded_samples_list) }
-  .map { it ->
-    def sample_id = it.sample_id
-    def bam_path = "${params.results_output}qc/dedup/${sample_id}.dedup.bam"//mapped to dedup
-    [sample_id, bam_path]
-  }
-  .set { dedup_bam_tuples }
-  dedup_bam_tuples.view()
-  mapped_reads         = pbmm2(dedup_bam_tuples,params.genome_fasta_f)
+    // Channel
+    //   .fromPath(params.input_samples_path)
+    //   .splitCsv(sep: ',', header: true)
+    //   .filter { it -> !(it.sample_id in excluded_samples_list) }
+    //   .map { it ->
+    //     def sample_id = it.sample_id
+    //     def bam_path = "${params.results_output}qc/dedup/${sample_id}.dedup.bam"//mapped to dedup
+    //     [sample_id, bam_path]
+    //   }
+    //   .set { dedup_bam_tuples }
+      dedup_bam_tuples.view()
+      mapped_reads         = pbmm2(dedup_bam_tuples,params.genome_fasta_f)
+    emit:
+      mapped_reads
 }
 
 
 workflow isoquant_twopass {
 
+  take:
+    fullBam_ch
+  main:
 
   def chromosomes_list = ['chr1', 'chr2', 'chr3', 'chr4', 'chr5', 'chr6', 'chr7', 'chr8', 'chr9',
                           'chr10', 'chr11', 'chr12', 'chr13', 'chr14', 'chr15', 'chr16', 'chr17',
@@ -180,48 +194,83 @@ workflow sqanti3 {
 
 }
 
+workflow deconvolution{
+  take:
+    mapped_reads
+  main:
+    mpileup_out_chanel = mpileup(mapped_reads,params.genome_fasta_f)
+    cellsnp_out = cellsnp(mpileup_out_chanel)
+
+    Channel
+      .fromPath(params.input_samples_path)
+      .splitCsv(sep: ',', header: true)
+      .map { it -> [it.sample_id, it.nr_samples_multiplexed] } // Create a tuple with bam_path and sample_id
+      .set { sampleNames_nrDons }
+
+    sampleNames_cellsnp_nrDons = cellsnp_out.combine(sampleNames_nrDons, by: 0)
+    vireo(sampleNames_cellsnp_nrDons)
+    
+    barcode_channel=vireo.out.barcodes_tuple.transpose()
+    combined_ch = mapped_reads.combine(barcode_channel, by: 0)
+    supset_bam_with_bai(combined_ch)
+    fullBam_ch = supset_bam_with_bai.out.per_donor_tuple
+
+  emit:
+    fullBam_ch
+
+}
+
+workflow full{
+
+  fltnc()
+  correct_barcodes(fltnc.out.refined_bam_tuples)
+  map_pbmm2(correct_barcodes.out.dedup_bam_tuples)
+  deconvolution(map_pbmm2.out.mapped_reads)
+  isoquant_twopass(deconvolution.out.fullBam_ch)
+}
+
 workflow isoquant_chunked_old {
 
 
-def chromosomes_list = ['chr1', 'chr2', 'chr3', 'chr4', 'chr5', 'chr6', 'chr7', 'chr8', 'chr9',
-                        'chr10', 'chr11', 'chr12', 'chr13', 'chr14', 'chr15', 'chr16', 'chr17',
-                        'chr18', 'chr19', 'chr20', 'chr21', 'chr22', 'chrX', 'chrY']
+    def chromosomes_list = ['chr1', 'chr2', 'chr3', 'chr4', 'chr5', 'chr6', 'chr7', 'chr8', 'chr9',
+                            'chr10', 'chr11', 'chr12', 'chr13', 'chr14', 'chr15', 'chr16', 'chr17',
+                            'chr18', 'chr19', 'chr20', 'chr21', 'chr22', 'chrX', 'chrY']
 
-///Testing
-/// def chromosomes_list = ['chr22']
-///
-chrom_ch=chroms(chromosomes_list)
-fullBam_ch=bamsWithExclusion()
+    ///Testing
+    /// def chromosomes_list = ['chr22']
+    ///
+    chrom_ch=chroms(chromosomes_list)
+    fullBam_ch=bamsWithExclusion()
 
-///Similar to fullBam_ch, but emits processed BAMs
-processedFullBam_ch=preprocess_bam(fullBam_ch)
-///Similar to processedFullBam_ch, but has a record per chromosome (useful for processing by chromosome using the full processed BAM files)
-///TESTING: .filter{record -> (record[0]=='Isogut15020393') || (record[0]=='Isogut14548284') }
-processedFullBam_ch
-.combine(chrom_ch)
-.map{ sample_id,bam,bai,chrom -> [sample_id,chrom,bam,bai] }
-.set{processedFullBam_Chrom_tuple_ch}
+    ///Similar to fullBam_ch, but emits processed BAMs
+    processedFullBam_ch=preprocess_bam(fullBam_ch)
+    ///Similar to processedFullBam_ch, but has a record per chromosome (useful for processing by chromosome using the full processed BAM files)
+    ///TESTING: .filter{record -> (record[0]=='Isogut15020393') || (record[0]=='Isogut14548284') }
+    processedFullBam_ch
+    .combine(chrom_ch)
+    .map{ sample_id,bam,bai,chrom -> [sample_id,chrom,bam,bai] }
+    .set{processedFullBam_Chrom_tuple_ch}
 
-///Similar to processedFullBam_Chrom_tuple_ch but tuples are grouped per chromosome
-processedFullBam_Chrom_tuple_ch
-.map{sample_id,chrom,bam,bai -> [chrom,sample_id,bam,bai]}
-.groupTuple()
-.set{processedFullBam_Chrom_groupedTuple_ch}
+    ///Similar to processedFullBam_Chrom_tuple_ch but tuples are grouped per chromosome
+    processedFullBam_Chrom_tuple_ch
+    .map{sample_id,chrom,bam,bai -> [chrom,sample_id,bam,bai]}
+    .groupTuple()
+    .set{processedFullBam_Chrom_groupedTuple_ch}
 
-///////////////////////////////////
-///////////TO BE REMOVED///////////
-///////////////////////////////////
-///mapped_bam_ch
-/// .flatMap { it ->
-///      def sample_id = it.sample_id
-///      def bam_path = "${params.results_output}qc/mapped/${sample_id}.mapped.realcells_only.bam"
-///      def bai_path = "${params.results_output}qc/mapped/${sample_id}.mapped.realcells_only.bam.bai"
-///      chromosomes_list.collect { chromosome -> [sample_id, chromosome, bam_path, bai_path] }
-///    }
-///    .set { mapped_bam_chrom_tuples }
-///////////////////////////////////
-///////////END: TO BE REMOVED//////
-///////////////////////////////////
+    ///////////////////////////////////
+    ///////////TO BE REMOVED///////////
+    ///////////////////////////////////
+    ///mapped_bam_ch
+    /// .flatMap { it ->
+    ///      def sample_id = it.sample_id
+    ///      def bam_path = "${params.results_output}qc/mapped/${sample_id}.mapped.realcells_only.bam"
+    ///      def bai_path = "${params.results_output}qc/mapped/${sample_id}.mapped.realcells_only.bam.bai"
+    ///      chromosomes_list.collect { chromosome -> [sample_id, chromosome, bam_path, bai_path] }
+    ///    }
+    ///    .set { mapped_bam_chrom_tuples }
+    ///////////////////////////////////
+    ///////////END: TO BE REMOVED//////
+    ///////////////////////////////////
 
 
 

@@ -84,7 +84,7 @@ process refine_reads {
       val min_polya_length
 
     output:
-      path "*"
+      tuple(val(sample_id), path("${sample_id}.fltnc.bam"))
 
     script:
     """

@@ -44,7 +44,7 @@ process barcode_correction {
 }
 
 process get_barcodes {
-    label 'get_barcodes'
+    label 'process_low'
     
     input:
     tuple val(sample), path(bam)
@@ -63,6 +63,7 @@ process get_barcodes {
 
 }
 
+
 process supset_bam {
     label 'supset_bam'
        
@@ -75,6 +76,26 @@ process supset_bam {
     script:
     	def bam_name=bam.baseName
     	def barcode_name=barcodes.baseName
+        """ 
+            samtools view --threads ${task.cpus} --tag-file CB:${barcodes} \
+               -o ${bam_name}.${barcode_name}.splited.bam ${bam}
+            samtools index -c ${bam_name}.${barcode_name}.splited.bam
+        """
+
+}
+
+process supset_bam_with_bai {
+    label 'supset_bam'
+       
+    input:
+        tuple val(sample), path(bam), path(bai), path(barcodes)
+
+    output:
+        tuple val({ "${sample}___${barcodes.simpleName.replaceFirst('barcodes__','')}" }), path("*.splited.bam"), path("*.splited.bam.csi"), emit: per_donor_tuple
+
+    script:
+    	def bam_name=bam.baseName
+    	def barcode_name=barcodes.baseName.replaceAll('barcodes__','')
         """ 
             samtools view --threads ${task.cpus} --tag-file CB:${barcodes} \
                -o ${bam_name}.${barcode_name}.splited.bam ${bam}
@@ -101,6 +122,7 @@ process dedup_reads {
     """
 }
 
+
 process combine_dedups {
     label 'combine_bams'
     publishDir "${params.results_output}qc/dedup", mode: 'copy'
@@ -115,10 +137,11 @@ process combine_dedups {
     script:
     """
  	samtools merge -f ${sample_id}.dedup.bam ${dedup_bam_chunks.join(' ')}
-    samtools index ${sample_id}.dedup.bam
+    samtools index -@ ${task.cpus} ${sample_id}.dedup.bam
 
     """
 }
+
 
 process bam_stats {
     label 'bam_stats'
@@ -131,7 +154,7 @@ process bam_stats {
 
 
     output:
-        path "*"
+        tuple val(sample_id), path(dedup_bam), path("${sample_id}.dedup.bam.bai")
 
     script:
     """
