@@ -200,7 +200,7 @@ workflow isoquant_chrM {
     isoquant_firstpass_output_ch.map{chrom,sample_id,isoquant_output_dir,isoquant_assignment_f, isoquant_input_bam -> [chrom,sample_id,isoquant_output_dir]}
     .set{replace_novel_names_input_ch}
 
-
+  /*
     //Updating names of novel transcript so they don't clash between chunks
     isoquant_output_novel_names_ch=replace_novel_names_firsPass_singlenovelname(replace_novel_names_input_ch)
 
@@ -234,7 +234,7 @@ workflow isoquant_chrM {
     transcriptmodel_reads=output_transcriptmodel_reads_ch
     corrected_reads=output_corrected_reads_ch
     nums_ch=bam_nums_perChr_ch
-
+  */
 
 }
 
@@ -367,6 +367,7 @@ workflow isoquant_twopass_chunked_wf {
 
     isoquant_secondpass_output_ch=run_isoquant_chunked(isoquant_chunked_input)
 
+    /*
     isoquant_secondpass_output_ch
     ///.filter{tpl -> (tpl[1] == 'chr1_227459712_248956421') || (tpl[1] == 'chr1_159501669_170660798')}
     .map{chrom,programmaticRegion,isoquant_output_dir,numReads, customLog -> [chrom,programmaticRegion,isoquant_output_dir]}
@@ -445,7 +446,7 @@ workflow isoquant_twopass_chunked_wf {
     transcriptmodel_reads=output_transcriptmodel_reads_ch
     corrected_reads=output_corrected_reads_ch
     nums_ch=bam_nums_perChr_ch
-
+  */
 }
 
 workflow publish_wf {
