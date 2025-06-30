@@ -2,9 +2,6 @@
 
 process mpileup {
     label 'deduplication'
-
-    
-
     publishDir "${params.results_output}results/deconvolution/mpileup", mode: 'copy'
 
     input:
@@ -64,6 +61,7 @@ process vireo {
         tuple val(sample_id),path(cellsnp),val(nr_samples)
     output:
         tuple val(sample_id), path("barcodes__*.tsv"), emit: barcodes_tuple
+        path("vireo__${sample_id}"), emit: vireo_results
 
     script:
     """
