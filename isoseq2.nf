@@ -219,8 +219,6 @@ workflow deconvolution{
   take:
     mapped_reads
   main:
-    mpileup_out_chanel = mpileup(mapped_reads,params.genome_fasta_f)
-    cellsnp_out = cellsnp(mpileup_out_chanel)
 
     Channel
       .fromPath(params.input_samples_path)
@@ -228,14 +226,24 @@ workflow deconvolution{
       .map { it -> [it.sample_id, it.nr_samples_multiplexed] } // Create a tuple with bam_path and sample_id
       .set { sampleNames_nrDons }
 
+    // Only perform deconvolution on samples that are more than 1 donor.
+    combined_ch_deconv =  mapped_reads.combine(sampleNames_nrDons, by: 0)
+    combined_ch_deconv.filter { experiment, bam, bai, npooled -> npooled == '1' }.map { experiment, bam, bai, _ -> [experiment, bam, bai] }.set{not_for_deconv}
+    combined_ch_deconv.filter { experiment, bam, bai, npooled -> npooled != '1' }.map { experiment, bam, bai, _ -> [experiment, bam, bai] }.set{for_deconv}
+
+    mpileup_out_chanel = mpileup(for_deconv,params.genome_fasta_f)
+    cellsnp_out = cellsnp(mpileup_out_chanel)
+
     sampleNames_cellsnp_nrDons = cellsnp_out.combine(sampleNames_nrDons, by: 0)
     vireo(sampleNames_cellsnp_nrDons)
     
     barcode_channel=vireo.out.barcodes_tuple.transpose()
-    combined_ch = mapped_reads.combine(barcode_channel, by: 0)
+    combined_ch = for_deconv.combine(barcode_channel, by: 0)
     supset_bam_with_bai(combined_ch)
-    fullBam_ch = supset_bam_with_bai.out.per_donor_tuple
+    fullBam_ch_pre = supset_bam_with_bai.out.per_donor_tuple
 
+    fullBam_ch_pre.mix(not_for_deconv).set{fullBam_ch}
+    
   emit:
     fullBam_ch
 

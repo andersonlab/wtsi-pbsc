@@ -91,7 +91,7 @@ process supset_bam_with_bai {
         tuple val(sample), path(bam), path(bai), path(barcodes)
 
     output:
-        tuple val({ "${sample}___${barcodes.simpleName.replaceFirst('barcodes__','')}" }), path("*.splited.bam"), path("*.splited.bam.csi"), emit: per_donor_tuple
+        tuple val({ "${sample}___${barcodes.simpleName.replaceFirst('barcodes__','')}" }), path("*.splited.bam"), path("*.splited.bam.bai"), emit: per_donor_tuple
 
     script:
     	def bam_name=bam.baseName
@@ -99,7 +99,7 @@ process supset_bam_with_bai {
         """ 
             samtools view --threads ${task.cpus} --tag-file CB:${barcodes} \
                -o ${bam_name}.${barcode_name}.splited.bam ${bam}
-            samtools index -c ${bam_name}.${barcode_name}.splited.bam
+            samtools index ${bam_name}.${barcode_name}.splited.bam
         """
 
 }
