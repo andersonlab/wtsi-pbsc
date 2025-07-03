@@ -199,7 +199,7 @@ workflow isoquant_chrM {
     //////////////////B-OUTPUT CHANNELs/////////////////////////
     ////////////////////////////////////////////////////////////
     //Setting up output channel for: counts, GTF, reads
-    isoquant_output_novel_names_ch.map{chrom,sample_id,isoquant_output_dir -> [chrom,"${isoquant_output_dir}/${sample_id}.${chrom}.discovered_transcript_counts.linear.tsv"]}.groupTuple(by:0).set{output_isoform_counts_ch}
+    isoquant_output_novel_names_ch.map{chrom,sample_id,isoquant_output_dir -> [chrom,"${isoquant_output_dir}/${sample_id}.${chrom}.discovered_transcript_grouped_counts.linear.tsv"]}.groupTuple(by:0).set{output_isoform_counts_ch}
     isoquant_output_novel_names_ch.map{chrom,sample_id,isoquant_output_dir -> [chrom,"${isoquant_output_dir}/${sample_id}.${chrom}.discovered_gene_grouped_counts.linear.tsv"]}.groupTuple(by:0).set{output_gene_counts_ch}
     isoquant_output_novel_names_ch.map{chrom,sample_id,isoquant_output_dir -> [chrom,"${isoquant_output_dir}/${sample_id}.${chrom}.transcript_models.gtf"]}.groupTuple(by:0).set{output_existing_gtf_ch}
     isoquant_output_novel_names_ch.map{chrom,sample_id,isoquant_output_dir -> [chrom,"${isoquant_output_dir}/${sample_id}.${chrom}.extended_annotation.gtf"]}.groupTuple(by:0).set{output_extended_gtf_ch}

@@ -188,13 +188,13 @@ process replace_novel_names {
       tuple val(chrom), val(programmaticRegion), path(isoquant_output)
 
     output:
-        tuple val(chrom), val(programmaticRegion), path("${programmaticRegion}/${programmaticRegion}_renamed/")
+      tuple val(chrom), val(programmaticRegion), path("${programmaticRegion}_renamed/")
 
 
     script:
     """
     input_dir=${isoquant_output}/${programmaticRegion}/
-    output_dir=${isoquant_output}/${programmaticRegion}_renamed/
+    output_dir=${programmaticRegion}_renamed/
     mkdir -p \$output_dir
 
     transcriptgenefix_file_suffixes=(\\
@@ -511,13 +511,13 @@ process replace_novel_names_firsPass_singlenovelname {
       tuple val(chrom), val(sample_id), path(isoquant_output)
 
     output:
-        tuple val(chrom), val(sample_id), path("${isoquant_output}/${sample_id}.${chrom}_renamed/")
+        tuple val(chrom), val(sample_id), path("${sample_id}.${chrom}_renamed/")
 
 
     script:
     """
     input_dir=${isoquant_output}/${sample_id}.${chrom}/
-    output_dir=${isoquant_output}/${sample_id}.${chrom}_renamed/
+    output_dir=${sample_id}.${chrom}_renamed/
     mkdir -p \$output_dir
 
     transcriptgenefix_file_suffixes=(\\
