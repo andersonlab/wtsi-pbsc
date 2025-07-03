@@ -25,19 +25,6 @@ include {format_intron_exon_grouped_counts_perChr as format_intron_grouped_count
 include {format_intron_exon_grouped_counts_perChr as format_exon_grouped_counts_firstPass_perChr} from '../../modules/isoquant.nf'
 include {format_intron_exon_grouped_counts_perChr as format_exon_grouped_counts_secondPass_perChr} from '../../modules/isoquant.nf'
 
-include {customPublish as customPublishH5ADGene} from '../../modules/customPublish.nf'
-include {customPublish as customPublishMTXGene} from '../../modules/customPublish.nf'
-include {customPublish as customPublishH5ADIsoform} from '../../modules/customPublish.nf'
-include {customPublish as customPublishMTXIsoform} from '../../modules/customPublish.nf'
-include {customPublish as customPublishNovelReadAssign} from '../../modules/customPublish.nf'
-include {customPublish as customPublishNovelCorrectedRead} from '../../modules/customPublish.nf'
-include {customPublish as customPublishNovelModelRead} from '../../modules/customPublish.nf'
-include {customPublish as customPublishKnownReadAssign} from '../../modules/customPublish.nf'
-include {customPublish as customPublishKnownCorrectedRead} from '../../modules/customPublish.nf'
-include {customPublish as customPublishExtendedGTF} from '../../modules/customPublish.nf'
-include {customPublish as customPublishExistingGTF} from '../../modules/customPublish.nf'
-
-
 include {find_mapped_and_unmapped_regions_per_sampleChrom; acrossSamples_mapped_unmapped_regions_perChr; suggest_splits_binarySearch; split_bams_perChunk} from '../../modules/smartSplit.nf'
 
 workflow isoquant_twopass_perChr_wf {
