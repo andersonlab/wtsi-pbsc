@@ -167,7 +167,7 @@ workflow isoquant_twopass {
   preprocessed_bam_perChr_ch.filter{chrom,sample_id,bam,bai -> chrom!="chrM"}.set{preprocessed_bam_nochrM_ch}
   chrom_genedb_fasta_chr_ch.filter{chrom,gene_db,fa,fai -> chrom!="chrM"}.set{chrom_genedb_fasta_nochrM_ch}
   nochrM_output_chs=isoquant_twopass_chunked_wf(preprocessed_bam_nochrM_ch,chrom_genedb_fasta_nochrM_ch,chrom_sizes_f,params.chunks)
-  /*
+  
   //Collecting output: MTX, GTF, reads
   collect_output_wf(
   (nochrM_output_chs.isoform_counts).concat(chrM_output_chs.isoform_counts),
@@ -178,7 +178,7 @@ workflow isoquant_twopass {
   (nochrM_output_chs.transcriptmodel_reads).concat(chrM_output_chs.transcriptmodel_reads),
   (nochrM_output_chs.corrected_reads).concat(chrM_output_chs.corrected_reads)
   )
-  */
+  
 }
 
 workflow sqanti3 {

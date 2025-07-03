@@ -200,10 +200,10 @@ workflow isoquant_chrM {
     isoquant_firstpass_output_ch.map{chrom,sample_id,isoquant_output_dir,isoquant_assignment_f, isoquant_input_bam -> [chrom,sample_id,isoquant_output_dir]}
     .set{replace_novel_names_input_ch}
 
-  /*
+  
     //Updating names of novel transcript so they don't clash between chunks
     isoquant_output_novel_names_ch=replace_novel_names_firsPass_singlenovelname(replace_novel_names_input_ch)
-
+    
     ///////////////////////////////////////////////////////
     //////////////////END: FIRST PASS//////////////////////
     ///////////////////////////////////////////////////////
@@ -212,8 +212,8 @@ workflow isoquant_chrM {
     //////////////////B-OUTPUT CHANNELs/////////////////////////
     ////////////////////////////////////////////////////////////
     //Setting up output channel for: counts, GTF, reads
-    isoquant_output_novel_names_ch.map{chrom,sample_id,isoquant_output_dir -> [chrom,"${isoquant_output_dir}/${sample_id}.${chrom}.transcript_model_grouped_counts_linear.tsv"]}.groupTuple(by:0).set{output_isoform_counts_ch}
-    isoquant_output_novel_names_ch.map{chrom,sample_id,isoquant_output_dir -> [chrom,"${isoquant_output_dir}/${sample_id}.${chrom}.gene_grouped_counts_linear.tsv"]}.groupTuple(by:0).set{output_gene_counts_ch}
+    isoquant_output_novel_names_ch.map{chrom,sample_id,isoquant_output_dir -> [chrom,"${isoquant_output_dir}/${sample_id}.${chrom}.discovered_transcript_counts.linear.tsv"]}.groupTuple(by:0).set{output_isoform_counts_ch}
+    isoquant_output_novel_names_ch.map{chrom,sample_id,isoquant_output_dir -> [chrom,"${isoquant_output_dir}/${sample_id}.${chrom}.discovered_gene_grouped_counts.linear.tsv"]}.groupTuple(by:0).set{output_gene_counts_ch}
     isoquant_output_novel_names_ch.map{chrom,sample_id,isoquant_output_dir -> [chrom,"${isoquant_output_dir}/${sample_id}.${chrom}.transcript_models.gtf"]}.groupTuple(by:0).set{output_existing_gtf_ch}
     isoquant_output_novel_names_ch.map{chrom,sample_id,isoquant_output_dir -> [chrom,"${isoquant_output_dir}/${sample_id}.${chrom}.extended_annotation.gtf"]}.groupTuple(by:0).set{output_extended_gtf_ch}
     isoquant_output_novel_names_ch.map{chrom,sample_id,isoquant_output_dir -> [chrom,"${isoquant_output_dir}/${sample_id}.${chrom}.corrected_reads.bed.gz"]}.groupTuple(by:0).set{output_corrected_reads_ch}
@@ -234,8 +234,6 @@ workflow isoquant_chrM {
     transcriptmodel_reads=output_transcriptmodel_reads_ch
     corrected_reads=output_corrected_reads_ch
     nums_ch=bam_nums_perChr_ch
-  */
-
 }
 
 ///////////////////////////////////////////////
@@ -361,54 +359,58 @@ workflow isoquant_twopass_chunked_wf {
 
     ///Runnning second pass
     modelconstructionRegionBam
-    .map {chrom, sample_ids, bams, bais, formattedRegion, programmaticRegion, counts_f  -> [chrom, sample_ids, bams, bais, formattedRegion, programmaticRegion, file(counts_f).splitCsv(header:false)[0][1] ] }
+    .map {chrom, sample_ids, bams, bais, formattedRegion, programmaticRegion, counts_f  -> [chrom, sample_ids, bams, bais, formattedRegion, programmaticRegion ] }
     .combine(chrom_genedb_fasta_chr_ch,by:0)
     .set {isoquant_chunked_input}
 
     isoquant_secondpass_output_ch=run_isoquant_chunked(isoquant_chunked_input)
 
-    /*
+    
     isoquant_secondpass_output_ch
     ///.filter{tpl -> (tpl[1] == 'chr1_227459712_248956421') || (tpl[1] == 'chr1_159501669_170660798')}
-    .map{chrom,programmaticRegion,isoquant_output_dir,numReads, customLog -> [chrom,programmaticRegion,isoquant_output_dir]}
     .set{replace_novel_names_input_ch}
 
 
     //1-Updating names of novel transcript so they don't clash between chunks
     isoquant_output_novel_names_ch=replace_novel_names(replace_novel_names_input_ch)
-
+  
 
     ////////////////////////////////////////////////////////////
     //////////////////B-OUTPUT CHANNELs/////////////////////////
     ////////////////////////////////////////////////////////////
     //Setting up output channel for: counts, GTF, reads
+
+    //Combining transcript-level counts channels from first and second passes 
     isoquant_firstpass_output_ch.combine(bam_nums_perChr_ch,by:0)
-    .map{chrom,sample_id,isoquant_output_dir,read_assignment_f,bam_f,bam_num -> [groupKey(chrom,bam_num),"${isoquant_output_dir}/${sample_id}.${chrom}/${sample_id}.${chrom}.transcript_grouped_counts_linear.tsv"]}
+    .map{chrom,sample_id,isoquant_output_dir,read_assignment_f,bam_f,bam_num -> [groupKey(chrom,bam_num),"${isoquant_output_dir}/${sample_id}.${chrom}/${sample_id}.${chrom}.transcript_grouped_counts.linear.tsv"]}
     .groupTuple(by:0)
     .combine(
-      isoquant_output_novel_names_ch.map{chrom,programmaticRegion,isoquant_output_dir -> [groupKey(chrom,chunks),"${isoquant_output_dir}/${programmaticRegion}.transcript_model_grouped_counts_linear.tsv"]}.groupTuple(by:0),
+      isoquant_output_novel_names_ch.map{chrom,programmaticRegion,isoquant_output_dir -> [groupKey(chrom,chunks),"${isoquant_output_dir}/${programmaticRegion}.discovered_transcript_grouped_counts.linear.noknown.tsv"]}.groupTuple(by:0),
       by:0
     )
     .map{chrom,firstPass,secondPass -> [chrom,firstPass+secondPass]}
     .set{output_isoform_counts_ch}
 
+    //Combining gene-level counts channels from first and second passes
     isoquant_firstpass_output_ch.combine(bam_nums_perChr_ch,by:0)
-    .map{chrom,sample_id,isoquant_output_dir,read_assignment_f,bam_f,bam_num -> [groupKey(chrom,bam_num),"${isoquant_output_dir}/${sample_id}.${chrom}/${sample_id}.${chrom}.gene_grouped_counts_linear.tsv"]}
+    .map{chrom,sample_id,isoquant_output_dir,read_assignment_f,bam_f,bam_num -> [groupKey(chrom,bam_num),"${isoquant_output_dir}/${sample_id}.${chrom}/${sample_id}.${chrom}.gene_grouped_counts.linear.tsv"]}
     .groupTuple(by:0)
     .combine(
-      isoquant_output_novel_names_ch.map{chrom,programmaticRegion,isoquant_output_dir -> [groupKey(chrom,chunks),"${isoquant_output_dir}/${programmaticRegion}.gene_grouped_counts_linear.tsv"]}.groupTuple(by:0),
+      isoquant_output_novel_names_ch.map{chrom,programmaticRegion,isoquant_output_dir -> [groupKey(chrom,chunks),"${isoquant_output_dir}/${programmaticRegion}.discovered_gene_grouped_counts.linear.tsv"]}.groupTuple(by:0),
       by:0
     )
     .map{chrom,firstPass,secondPass -> [chrom,firstPass+secondPass]}
     .set{output_gene_counts_ch}
 
-
+    //Collecting transcript models GTFs. 
     isoquant_output_novel_names_ch.map{chrom,programmaticRegion,isoquant_output_dir -> [groupKey(chrom,chunks),"${isoquant_output_dir}/${programmaticRegion}.transcript_models.gtf"]}.groupTuple(by:0)
     .set{output_existing_gtf_ch}
 
+    //Collecting transcript models extended GTFs. 
     isoquant_output_novel_names_ch.map{chrom,programmaticRegion,isoquant_output_dir -> [groupKey(chrom,chunks),"${isoquant_output_dir}/${programmaticRegion}.extended_annotation.gtf"]}.groupTuple(by:0)
     .set{output_extended_gtf_ch}
 
+    //Collecting corrected reads beds from first/second passes
     isoquant_firstpass_output_ch.combine(bam_nums_perChr_ch,by:0)
     .map{chrom,sample_id,isoquant_output_dir,read_assignment_f,bam_f,bam_num -> [groupKey(chrom,bam_num),"${isoquant_output_dir}/${sample_id}.${chrom}/${sample_id}.${chrom}.corrected_reads.bed.gz"]}
     .groupTuple(by:0)
@@ -419,6 +421,7 @@ workflow isoquant_twopass_chunked_wf {
     .map{chrom,firstPass,secondPass -> [chrom,firstPass+secondPass]}
     .set{output_corrected_reads_ch}
 
+    //Collecting read assignments from first/second passes
     isoquant_firstpass_output_ch.combine(bam_nums_perChr_ch,by:0)
     .map{chrom,sample_id,isoquant_output_dir,read_assignment_f,bam_f,bam_num -> [groupKey(chrom,bam_num),"${isoquant_output_dir}/${sample_id}.${chrom}/${sample_id}.${chrom}.read_assignments.tsv.gz"]}
     .groupTuple(by:0)
@@ -429,6 +432,7 @@ workflow isoquant_twopass_chunked_wf {
     .map{chrom,firstPass,secondPass -> [chrom,firstPass+secondPass]}
     .set{output_assignment_reads_ch}
 
+    //Collecting novel transcripts reads
     isoquant_output_novel_names_ch.map{chrom,programmaticRegion,isoquant_output_dir -> [groupKey(chrom,chunks),"${isoquant_output_dir}/${programmaticRegion}.transcript_model_reads.tsv.gz"]}.groupTuple(by:0)
     .set{output_transcriptmodel_reads_ch}
 
@@ -446,65 +450,7 @@ workflow isoquant_twopass_chunked_wf {
     transcriptmodel_reads=output_transcriptmodel_reads_ch
     corrected_reads=output_corrected_reads_ch
     nums_ch=bam_nums_perChr_ch
-  */
+  
 }
 
-workflow publish_wf {
-  take:
-    isoquant_firstpass_ch
-    isoquant_secondpass_ch
-    isoform_gene_mtx_h5ad
-    extended_gtf
-    existing_gtf
-  main:
-    ////////////////////////////////////////////////////////////
-    //////////////////PUBLISHING OUTPUTS////////////////////////
-    ////////////////////////////////////////////////////////////
-    //Publishing count files
-    customPublishH5ADIsoform(isoform_gene_mtx_h5ad.isoform_h5ad,"${params.results_output}results/counts/isoform/H5AD/")
-    customPublishMTXIsoform((isoform_gene_mtx_h5ad.isoform_mtx).collect(),"${params.results_output}results/counts/isoform/MTX/")
-    customPublishH5ADGene(isoform_gene_mtx_h5ad.gene_h5ad,"${params.results_output}results/counts/gene/H5AD/")
-    customPublishMTXGene((isoform_gene_mtx_h5ad.gene_mtx).collect(),"${params.results_output}results/counts/gene/MTX/")
 
-
-    //Publishing read info files
-    isoquant_firstpass_ch
-    .combine(bam_nums_perChr_ch,by:0)
-    .map{chrom,sample_id,isoquant_output_dir,read_assignments_f,processed_bam,chrom_sample_size -> [groupKey(chrom,chrom_sample_size),"${isoquant_output_dir}/${sample_id}.${chrom}/${sample_id}.${chrom}.corrected_reads.bed.gz", "${isoquant_output_dir}/${sample_id}.${chrom}/${sample_id}.${chrom}.read_assignments.tsv.gz"]}
-    .groupTuple(by:0)
-    .multiMap{chrom,corr_reads,read_assign ->
-    o: "${params.results_output}results/reads_info/known/${chrom}/"
-    corr: corr_reads
-    assign: read_assign
-    }
-    .set{read_info_known_publish_ch}
-
-
-    isoquant_secondpass_ch
-    .map{chrom,programmaticRegion,isoquant_output_dir -> [groupKey(chrom,chunks),"${isoquant_output_dir}/${programmaticRegion}.corrected_reads.bed.gz","${isoquant_output_dir}/${programmaticRegion}.read_assignments.tsv.gz","${isoquant_output_dir}/${programmaticRegion}.transcript_model_reads.tsv.gz"]}
-    .groupTuple(by:0)
-    .multiMap{chrom,corr_reads,read_assign,model_reads ->
-    o: "${params.results_output}results/reads_info/novel/${chrom}/"
-    corr: corr_reads
-    assign: read_assign
-    model: model_reads
-    }
-    .set{read_info_novel_publish_ch}
-
-
-    customPublishNovelReadAssign(read_info_novel_publish_ch.assign, read_info_novel_publish_ch.o)
-    customPublishNovelCorrectedRead(read_info_novel_publish_ch.corr, read_info_novel_publish_ch.o)
-    customPublishNovelModelRead(read_info_novel_publish_ch.model, read_info_novel_publish_ch.o)
-
-
-    customPublishKnownReadAssign(read_info_known_publish_ch.assign,read_info_known_publish_ch.o)
-    customPublishKnownCorrectedRead(read_info_known_publish_ch.corr,read_info_known_publish_ch.o)
-
-    //Publishing GTFs
-    customPublishExtendedGTF(extended_gtf,"${params.results_output}results/gtf/")
-    customPublishExistingGTF(existing_gtf,"${params.results_output}results/gtf/")
-    ///////////////////////////////////////////////////////////////////
-    //////////////////END: C-COLLECTING OUTPUTS////////////////////////
-    //////////////////////////////////////////////////////////////////
-
-}
