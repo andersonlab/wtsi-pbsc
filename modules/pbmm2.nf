@@ -12,9 +12,9 @@ process pbmm2 {
     script:
     """
     pbmm2 align -j ${task.cpus} --preset ISOSEQ --sort ${dedup_bam} ${genome_fasta_f} ${sample_id}.mapped.bam
-    samtools index -@ task.cpus ${sample_id}.mapped.bam
+    samtools index -@ ${task.cpus} ${sample_id}.mapped.bam
 
-    samtools view -@ task.cpus -h -d rc:1 -bo ${sample_id}.mapped.realcells_only.bam ${sample_id}.mapped.bam
-    samtools index -@ task.cpus ${sample_id}.mapped.realcells_only.bam
+    samtools view -@ ${task.cpus} -h -d rc:1 -bo ${sample_id}.mapped.realcells_only.bam ${sample_id}.mapped.bam
+    samtools index -@ ${task.cpus} ${sample_id}.mapped.realcells_only.bam
     """
 }
