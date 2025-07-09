@@ -2,7 +2,7 @@
 
 process mpileup {
     label 'deduplication'
-    publishDir "${params.results_output}results/deconvolution/mpileup", mode: 'copy'
+    publishDir "${params.results_output}deconvolution/mpileup", mode: 'copy'
 
     input:
         tuple val(sample_id), path(bam), path(bam_bai)
@@ -24,7 +24,7 @@ process mpileup {
 
 process subset_vcf {
     label 'deconvolution'
-    publishDir "${params.results_output}results/deconvolution/mpileup", mode: 'copy'
+    publishDir "${params.results_output}deconvolution/mpileup", mode: 'copy'
 
     input:
         tuple val(sample_id), path(bam), path(bam_bai), path(sample_id__barcodes), path(sample_id__piled_up_reads)
@@ -42,7 +42,7 @@ process subset_vcf {
 process cellsnp {
     label 'cellsnp'
     container "/software/hgi/containers/yascp/yascp.cog.sanger.ac.uk-public-yascp_qc_jan_2025.sif"
-    publishDir "${params.results_output}results/deconvolution/cellsnp", mode: 'copy'
+    publishDir "${params.results_output}deconvolution/cellsnp", mode: 'copy'
 
     input:
         tuple val(sample_id), path(bam), path(bam_bai), path(barcodes), path(piled_up_reads)
@@ -72,7 +72,7 @@ process vireo {
 
     container "/software/hgi/containers/yascp/yascp.cog.sanger.ac.uk-public-yascp_qc_jan_2025.sif"
 
-    publishDir "${params.results_output}results/deconvolution/vireo", mode: 'copy'
+    publishDir "${params.results_output}deconvolution/vireo", mode: 'copy'
 
     input:
         tuple val(sample_id),path(cellsnp),val(nr_samples)
