@@ -491,7 +491,7 @@ label 'isoquant_firstPass'
 ///chrM processes///
 ////////////////////
 process run_isoquant_firstPass_withmodelconstruction {
-label 'massive_long_job'
+label 'isoquant_firstPass_withmodelconstruction'
 
   input:
       tuple val(chrom), val(sample_id), path(bam), path(bai), path(genedb), path(fasta), path(fai)
