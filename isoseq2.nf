@@ -7,7 +7,7 @@ include {barcode_correction; get_barcodes; supset_bam; supset_bam_with_bai; dedu
 include { pbmm2 } from './modules/pbmm2.nf'
 include {SQANTI3_QC; SQANTI3_FILTER} from './modules/sqanti3.nf'
 ///include {preprocess_bam; find_mapped_and_unmapped_regions_per_sampleChrom; acrossSamples_mapped_unmapped_regions_perChr; suggest_splits_binarySearch; split_bams; create_genedb_fasta_perChr; run_isoquant_chunked} from './modules/isoquant.nf'
-include { mpileup; cellsnp; vireo }  from './modules/deconvolution.nf'
+include { mpileup; cellsnp; vireo; subset_vcf }  from './modules/deconvolution.nf'
 
 ///Subworkflows
 include {chroms} from './subworkflows/core/chroms.nf'
@@ -232,7 +232,8 @@ workflow deconvolution{
     combined_ch_deconv.filter { experiment, bam, bai, npooled -> npooled != '1' }.map { experiment, bam, bai, _ -> [experiment, bam, bai] }.set{for_deconv}
 
     mpileup_out_chanel = mpileup(for_deconv,params.genome_fasta_f)
-    cellsnp_out = cellsnp(mpileup_out_chanel)
+    mpileup_out_chanel_subset = subset_vcf(mpileup_out_chanel,params.subset_regions_bed)
+    cellsnp_out = cellsnp(mpileup_out_chanel_subset)
 
     sampleNames_cellsnp_nrDons = cellsnp_out.combine(sampleNames_nrDons, by: 0)
     vireo(sampleNames_cellsnp_nrDons)

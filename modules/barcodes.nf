@@ -4,7 +4,7 @@ process barcode_correction {
 
     input:
         tuple val(sample_id), path(refined_reads_bam)
-        val threeprime_whitelist
+        path(threeprime_whitelist)
         val barcode_correction_method
         val barcode_correction_percentile
 

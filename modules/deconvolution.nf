@@ -22,8 +22,25 @@ process mpileup {
     """
 }
 
+process subset_vcf {
+    label 'deconvolution'
+    publishDir "${params.results_output}results/deconvolution/mpileup", mode: 'copy'
+
+    input:
+        tuple val(sample_id), path(bam), path(bam_bai), path(sample_id__barcodes), path(sample_id__piled_up_reads)
+        path(subset_regions_bed)
+    output:
+        tuple val(sample_id), path(bam), path(bam_bai), path(sample_id__barcodes), path("${sample_id}__piled_up_reads__subset.vcf.gz")
+    script:
+    """
+        bgzip -c ${sample_id__piled_up_reads} > ${sample_id}__tmp.vcf.gz
+        tabix -p vcf ${sample_id}__tmp.vcf.gz
+        bcftools view -R ${subset_regions_bed} ${sample_id}__tmp.vcf.gz -Oz -o ${sample_id}__piled_up_reads__subset.vcf.gz
+    """
+}
+
 process cellsnp {
-    label 'deduplication'
+    label 'cellsnp'
     container "/software/hgi/containers/yascp/yascp.cog.sanger.ac.uk-public-yascp_qc_jan_2025.sif"
     publishDir "${params.results_output}results/deconvolution/cellsnp", mode: 'copy'
 
@@ -39,7 +56,7 @@ process cellsnp {
         -O cellsnp__${sample_id} \
         -b ${barcodes} \
         -R ${piled_up_reads} \
-        -p 20 \
+        -p $task.cpus \
         --minMAF 0.01 \
         --minCOUNT 1 \
         --gzip \
@@ -51,7 +68,7 @@ process cellsnp {
 
 
 process vireo {
-    label 'deduplication'
+    label 'deconvolution'
 
     container "/software/hgi/containers/yascp/yascp.cog.sanger.ac.uk-public-yascp_qc_jan_2025.sif"
 
@@ -72,7 +89,7 @@ process vireo {
         -o vireo__${sample_id} \
         --randSeed 1 \
         --nInit 200 \
-        -p 15
+        -p $task.cpus
 
         #Split the donor barcodes in an independent files for next step of bam splits.
         awk 'NR > 1 && \$2 != "unassigned" && \$2 != "doublet" {print > ("barcodes__" \$2 ".tsv")}' vireo__${sample_id}/donor_ids.tsv
