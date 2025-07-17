@@ -2,7 +2,7 @@ nextflow.enable.dsl=2
 
 ///Modules
 include { split_reads; remove_primer; tag_bam; refine_reads } from './modules/fltnc.nf'
-include {barcode_correction; get_barcodes; supset_bam; supset_bam_with_bai; dedup_reads; combine_dedups; bam_stats} from './modules/barcodes.nf'
+include {barcode_correction; get_barcodes; supset_bam; supset_bam_with_bai; dedup_reads; combine_dedups; combine_mupped; bam_stats} from './modules/barcodes.nf'
 
 include { pbmm2 } from './modules/pbmm2.nf'
 include {SQANTI3_QC; SQANTI3_FILTER} from './modules/sqanti3.nf'
@@ -93,16 +93,18 @@ workflow correct_barcodes_process {
 
       dedup_reads(supset_bam.out.chunk_tuple, params.dedup_batch_size)
 
-      deduped_chunks_ch=dedup_reads.out.dedup_tuple.groupTuple()
+      mapped_chunks = pbmm2(dedup_reads.out.dedup_tuple, params.genome_fasta_f)
 
-      combine_dedups(deduped_chunks_ch)
+      mapped_chunks_ch=mapped_chunks.map_tuple.groupTuple()
 
-      combined_dedup_ch=combine_dedups.out.dedup_tuple
+      mapped_reads=combine_mupped(mapped_chunks_ch)
 
-      dedup_bam_tuples = bam_stats(combined_dedup_ch, params.barcode_correction_method,params.barcode_correction_percentile)
+      //combined_dedup_ch=combine_dedups.out.dedup_tuple
+
+      //dedup_bam_tuples = bam_stats(combined_dedup_ch, params.barcode_correction_method,params.barcode_correction_percentile)
 
   emit:
-    dedup_bam_tuples
+    mapped_reads
 
 }
 
@@ -111,41 +113,6 @@ workflow correct_barcodes {
     // Independent workflow entry for isoquant_twopass
     input_ch = 'independent workflow'
     correct_barcodes_process(input_ch)
-}
-
-
-workflow map_pbmm2_process {
-  take:
-    dedup_bam_tuples
-  main:
-      def excluded_samples_list = file(params.exclude_samples).exists() ?
-        file(params.exclude_samples).text.split('\n').drop(1).collect { it.split(',')[0].trim() } : []
-
-      println "Excluded samples: $excluded_samples_list"
-      if (dedup_bam_tuples == 'independent workflow'){
-          Channel
-            .fromPath(params.input_samples_path)
-            .splitCsv(sep: ',', header: true)
-            .filter { it -> !(it.sample_id in excluded_samples_list) }
-            .map { it ->
-              def sample_id = it.sample_id
-              def bam_path = "${params.results_output}qc/dedup/${sample_id}.dedup.bam"//mapped to dedup
-              def bam_path_bai = "${params.results_output}qc/dedup/${sample_id}.dedup.bam.bai"//mapped to dedup
-              [sample_id, bam_path, bam_path_bai]
-            }
-            .set { dedup_bam_tuples }
-      }
-
-      dedup_bam_tuples.view()
-      mapped_reads         = pbmm2(dedup_bam_tuples,params.genome_fasta_f)
-    emit:
-      mapped_reads
-}
-
-workflow map_pbmm2 {
-    // Independent workflow entry for isoquant_twopass
-    input_ch = 'independent workflow'
-    map_pbmm2_process(input_ch)
 }
 
 workflow isoquant_twopass_process {
@@ -220,6 +187,23 @@ workflow deconvolution{
     mapped_reads
   main:
 
+    def excluded_samples_list = file(params.exclude_samples).exists() ?
+      file(params.exclude_samples).text.split('\n').drop(1).collect { it.split(',')[0].trim() } : []
+
+    if (mapped_reads == 'independent workflow'){
+    Channel
+      .fromPath(params.input_samples_path)
+      .splitCsv(sep: ',', header: true)
+      .filter { it -> !(it.sample_id in excluded_samples_list) }
+      .map { it ->
+        def sample_id = it.sample_id
+        def bam_path = "${params.results_output}qc/mapped/${sample_id}.mapped.realcells_only.bam"
+        def bai_path = "${params.results_output}qc/mapped/${sample_id}.mapped.realcells_only.bam.bai"
+        [sample_id, bam_path, bai_path]
+      }
+      .set { mapped_reads }
+    }
+
     Channel
       .fromPath(params.input_samples_path)
       .splitCsv(sep: ',', header: true)
@@ -250,11 +234,16 @@ workflow deconvolution{
 
 }
 
+workflow deconvolutionwf {
+    // Independent workflow entry for deconvolution
+    input_ch = 'independent workflow'
+    deconvolution(input_ch)
+}
+
 workflow full{
 
   fltnc()
   correct_barcodes_process(fltnc.out.refined_bam_tuples)
-  map_pbmm2_process(correct_barcodes_process.out.dedup_bam_tuples)
-  deconvolution(map_pbmm2_process.out.mapped_reads)
+  deconvolution(correct_barcodes_process.out.mapped_reads)
   isoquant_twopass_process(deconvolution.out.fullBam_ch)
 }

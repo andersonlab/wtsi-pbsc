@@ -142,6 +142,25 @@ process combine_dedups {
     """
 }
 
+process combine_mupped {
+    label 'combine_bams'
+    publishDir "${params.results_output}qc/mapped", mode: 'copy'
+
+    input:
+        tuple val(sample_id), path(mapped_bam_chunks)
+
+
+    output:
+        tuple val(sample_id), path("${sample_id}.mapped.realcells_only.bam"), path("${sample_id}.mapped.realcells_only.bam.bai"), emit: dedup_tuple
+
+    script:
+    """
+ 	samtools merge -f ${sample_id}.mapped.realcells_only.merged.bam ${mapped_bam_chunks.join(' ')}
+    samtools sort -@ ${task.cpus} -o ${sample_id}.mapped.realcells_only.bam ${sample_id}.mapped.realcells_only.merged.bam
+    samtools index -@ ${task.cpus} ${sample_id}.mapped.realcells_only.bam
+    """
+}
+
 
 process bam_stats {
     label 'bam_stats'
