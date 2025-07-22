@@ -1,7 +1,7 @@
 process dedup_reads {
     label 'deduplication'
 
-    conda "/software/hgi/envs/conda/team152/mt27/isoseq/"
+    
 
     publishDir "${params.results_output}results/unmapped_bam", mode: 'copy'
 

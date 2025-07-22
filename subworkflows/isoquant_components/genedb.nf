@@ -1,7 +1,7 @@
 
 
 process create_genedb_fasta_perChr {
-  label 'micro_job'
+  label 'genedb_fasta'
 
   input:
       tuple val(chrom), path(gtf_f), path(fasta_f)

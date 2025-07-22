@@ -155,29 +155,26 @@ process split_bams {
 
 process run_isoquant_chunked {
     label 'isoquant_chunked'
-    memory {
-      def numReads = numReads.toInteger()
-      def baseMemGB=3
-      def additionalmemGB = numReads <= 100 ? 0 : numReads <= 1000 ? 2 : numReads <= 100000 ? 10 : numReads <= 1000000 ? 20 : numReads <= 10000000 ? 50 : numReads <= 100000000 ? 200 : 400
-      return ((baseMemGB+additionalmemGB + (0.25 * additionalmemGB * (task.attempt-1) )).toInteger().toString()) + '.GB'
-    }
+    // memory {
+    //   def numReads = numReads.toInteger()
+    //   def baseMemGB=3
+    //   def additionalmemGB = numReads <= 100 ? 0 : numReads <= 1000 ? 2 : numReads <= 100000 ? 10 : numReads <= 1000000 ? 20 : numReads <= 10000000 ? 50 : numReads <= 100000000 ? 200 : 400
+    //   return ((baseMemGB+additionalmemGB + (0.25 * additionalmemGB * (task.attempt-1) )).toInteger().toString()) + '.GB'
+    // }
 
     input:
-        tuple val(chrom), val(sample_ids), path(bams), path(bais), val(formattedRegion), val(programmaticRegion), val(numReads), path(genedb), path(fasta), path(fai)
+        tuple val(chrom), val(sample_ids), path(bams), path(bais), val(formattedRegion), val(programmaticRegion), path(genedb), path(fasta), path(fai)
 
 
 
 
     output:
-        tuple val(chrom), val(programmaticRegion), path("${programmaticRegion}/"), val("${numReads}"),path("custom_isoquantlog_${programmaticRegion}.out")
+        tuple val(chrom), val(programmaticRegion), path("${programmaticRegion}/")
 
 
     script:
     """
-    echo "${chrom},${formattedRegion},${programmaticRegion},${numReads},${task.memory}" > custom_isoquantlog_${programmaticRegion}.out
-
-
-    isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${bams.join(' ')} --labels ${sample_ids.join(' ')} --data_type pacbio_ccs -o ${programmaticRegion} -p ${programmaticRegion} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format linear --bam_tags CB --no_secondary --clean_start
+    isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${bams.join(' ')} --labels ${sample_ids.join(' ')} --data_type pacbio_ccs -o ${programmaticRegion} -p ${programmaticRegion} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --clean_start
 
 
     """
@@ -191,44 +188,65 @@ process replace_novel_names {
       tuple val(chrom), val(programmaticRegion), path(isoquant_output)
 
     output:
-        tuple val(chrom), val(programmaticRegion), path("${programmaticRegion}/${programmaticRegion}_renamed/")
+      tuple val(chrom), val(programmaticRegion), path("${programmaticRegion}_renamed/")
 
 
     script:
     """
     input_dir=${isoquant_output}/${programmaticRegion}/
-    output_dir=${isoquant_output}/${programmaticRegion}_renamed/
+    output_dir=${programmaticRegion}_renamed/
     mkdir -p \$output_dir
 
     transcriptgenefix_file_suffixes=(\\
-    .transcript_model_counts.tsv \\
-    .transcript_model_grouped_counts_linear.tsv \\
-    .transcript_model_grouped_counts.tsv \\
-    .transcript_model_grouped_tpm.tsv \\
+    .discovered_gene_counts.tsv  \\
+    .discovered_gene_grouped_counts.features.tsv \\
+    .discovered_gene_grouped_counts.linear.tsv \\
+    .discovered_gene_grouped_tpm.features.tsv \\
+    .discovered_gene_tpm.tsv \\
+    .discovered_transcript_counts.tsv \\
+    .discovered_transcript_grouped_counts.features.tsv \\
+    .discovered_transcript_grouped_counts.linear.tsv \\
+    .discovered_transcript_grouped_tpm.features.tsv \\
+    .discovered_transcript_tpm.tsv \\
+    .gene_counts.tsv \\
+    .gene_grouped_counts.features.tsv \\
+    .gene_grouped_counts.linear.tsv \\
+    .gene_grouped_tpm.features.tsv \\
+    .novel_vs_known.SQANTI-like.tsv \\
     .transcript_model_reads.tsv.gz \\
     .transcript_models.gtf \\
-    .transcript_model_tpm.tsv \\
-    .transcript_tpm.tsv \\
-    .transcript_counts.tsv \\
-    .transcript_grouped_counts_linear.tsv \\
-    .transcript_grouped_counts.tsv \\
-    .transcript_grouped_tpm.tsv \\
-    .novel_vs_known.SQANTI-like.tsv \\
     .extended_annotation.gtf \\
-    .gene_counts.tsv \\
-    .gene_grouped_counts_linear.tsv \\
-    .gene_grouped_counts.tsv \\
-    .gene_grouped_tpm.tsv \\
-    .gene_tpm.tsv \\
+    .transcript_counts.tsv \\
+    .transcript_grouped_counts.features.tsv \\
+    .transcript_grouped_counts.linear.tsv  \\
+    .transcript_grouped_tpm.features.tsv \\
     )
 
     asis_file_suffixes=(\\
-    .intron_grouped_counts.tsv \\
+    .intron_grouped_counts.linear.tsv  \\
     .intron_counts.tsv \\
     .exon_counts.tsv \\
-    .exon_grouped_counts.tsv \\
-    .corrected_reads.bed.gz \\
+    .exon_grouped_counts.linear.tsv \\
+    .discovered_gene_grouped_counts.matrix.mtx \\
+    .discovered_gene_grouped_tpm.matrix.mtx \\
+    .discovered_transcript_grouped_counts.matrix.mtx \\
+    .discovered_transcript_grouped_tpm.matrix.mtx \\
+    .gene_grouped_counts.matrix.mtx \\
+    .gene_grouped_tpm.matrix.mtx \\
+    .transcript_grouped_counts.matrix.mtx \\
+    .transcript_grouped_tpm.matrix.mtx \\
+    .transcript_grouped_tpm.barcodes.tsv \\
+    .transcript_grouped_counts.barcodes.tsv \\
+    .gene_grouped_tpm.barcodes.tsv \\
+    .gene_grouped_counts.barcodes.tsv \\
+    .discovered_transcript_grouped_tpm.barcodes.tsv \\
+    .discovered_transcript_grouped_counts.barcodes.tsv \\
+    .discovered_gene_grouped_tpm.barcodes.tsv \\
+    .discovered_gene_grouped_counts.barcodes.tsv \\
     .read_assignments.tsv.gz \\
+    .corrected_reads.bed.gz \\
+    .transcript_tpm.tsv \\
+    .gene_tpm.tsv \\
     )
 
     exonfix_file_suffixes=(\\
@@ -240,13 +258,17 @@ process replace_novel_names {
     for suffix in \${transcriptgenefix_file_suffixes[@]}; do
       input_f="\${input_dir}${programmaticRegion}\${suffix}"
       output_f="\${output_dir}${programmaticRegion}\${suffix}"
-      zcat -f \${input_f} | sed -E "s/(transcript[0-9]+)\\.([^.]+)\\.([^.]+)/\\1.${programmaticRegion}.\\3/g; s/(novel_gene)_([^_]+)_([0-9]+)/\\1_${programmaticRegion}_\\3/g" > \${output_f}
+      if [[ -e "\$input_f" ]]; then
+        zcat -f \${input_f} | sed -E "s/(transcript[0-9]+)\\.([^.]+)\\.([^.]+)/\\1.${programmaticRegion}.\\3/g; s/(novel_gene)_([^_]+)_([0-9]+)/\\1_${programmaticRegion}_\\3/g" > \${output_f};
+      fi;
     done;
 
     for suffix in \${asis_file_suffixes[@]}; do
       input_f="\${input_dir}${programmaticRegion}\${suffix}"
       output_f="\${output_dir}${programmaticRegion}\${suffix}"
-      cp \${input_f} \${output_f}
+      if [[ -e "\$input_f" ]]; then
+        cp \${input_f} \${output_f};
+      fi;
     done;
 
     #We also need to fix exon_ids in both extended_annotation and transcript_models GTFs
@@ -254,20 +276,34 @@ process replace_novel_names {
       #saving exonfixed GTFs as tmp file
       output_f_noexonfix="\${output_dir}${programmaticRegion}\${suffix}";
       output_f_withexonfixtmp="\${output_dir}${programmaticRegion}\${suffix}.tmp";
-      bash ${baseDir}/scripts/fix_exon_ids.sh "\${output_f_noexonfix}" "\${output_f_withexonfixtmp}" "${programmaticRegion}";
-      #reverting to original name
-      rm \${output_f_noexonfix}
-      mv \${output_f_withexonfixtmp} \${output_f_noexonfix}
+      if [[ -e "\$output_f_noexonfix" ]]; then
+        bash ${baseDir}/scripts/fix_exon_ids.sh "\${output_f_noexonfix}" "\${output_f_withexonfixtmp}" "${programmaticRegion}";
+        #reverting to original name
+        rm \${output_f_noexonfix}
+        mv \${output_f_withexonfixtmp} \${output_f_noexonfix}
+      fi;
     done;
 
+
     #This should later be added to isoquant_chunked process
-    #There is a bug in Isoquant where if i include only inconsistent reads it still generates known isoforms in the transcript_model_linear_counts.tsv file
-    output_suffix_withknown=.transcript_model_grouped_counts_linear.tsv
-    output_suffix_noknown=.transcript_model_grouped_counts_linear.noknown.tsv
+    #There is a bug in Isoquant where if i include only inconsistent reads it still generates known isoforms in the .discovered_transcript_counts.tsv and discovered_transcript_grouped_counts.linear.tsv file (fixed in IsoQuant 3.7.0 so this is extra cautious)
+    output_suffix_withknown=.discovered_transcript_counts.tsv
+    output_suffix_noknown=.discovered_transcript_counts.noknown.tsv
     output_f_withknown="\${output_dir}${programmaticRegion}\${output_suffix_withknown}"
     output_f_noknown="\${output_dir}${programmaticRegion}\${output_suffix_noknown}"
-    grep -v "^ENST" \${output_f_withknown} > \${output_f_noknown}
+    grep -v -e "^ENST" -e "__ambiguous" -e "__no_feature" -e "__not_aligned" \${output_f_withknown} > \${output_f_noknown}
 
+    output_suffix_withknown=.discovered_transcript_grouped_counts.linear.tsv
+    output_suffix_noknown=.discovered_transcript_grouped_counts.linear.noknwn.tsv
+    output_f_withknown="\${output_dir}${programmaticRegion}\${output_suffix_withknown}"
+    output_f_noknown="\${output_dir}${programmaticRegion}\${output_suffix_noknown}"
+    grep -v -e "^ENST" -e "__ambiguous" -e "__no_feature" -e "__not_aligned" \${output_f_withknown} > \${output_f_noknown}
+
+    output_suffix_withknown=.discovered_transcript_grouped_counts.linear.tsv
+    output_suffix_noknown=.discovered_transcript_grouped_counts.linear.noknown.tsv
+    output_f_withknown="\${output_dir}${programmaticRegion}\${output_suffix_withknown}"
+    output_f_noknown="\${output_dir}${programmaticRegion}\${output_suffix_noknown}"
+    grep -v -e "^ENST" -e "__ambiguous" -e "__no_feature" -e "__not_aligned" \${output_f_withknown} > \${output_f_noknown}
     """
 }
 
@@ -292,7 +328,7 @@ process collect_counts_as_mtx {
 }
 
 process collect_counts_as_mtx_perChr {
-    label 'big_job_collect'
+    label 'counts_collect'
     publishDir "${publish_dir}", mode: 'copy', overwrite: true
 
     input:
@@ -315,7 +351,7 @@ process collect_counts_as_mtx_perChr {
 }
 
 process collect_mtx_as_h5ad {
-    label 'big_job_collect'
+    label 'counts_collect'
     publishDir "${publish_dir}", mode: 'copy', overwrite: true
 
     input:
@@ -432,13 +468,13 @@ process run_isoquant_perChr {
 
     script:
     """
-    isoquant.py --reference ${genome_fasta_f} --genedb ${gtf_f} --complete_genedb --sqanti_output --bam ${bams.join(' ')} --labels ${sample_ids.join(' ')} --data_type pacbio_ccs -o ${chrom} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format linear --bam_tags CB --no_secondary --clean_start
+    isoquant.py --reference ${genome_fasta_f} --genedb ${gtf_f} --complete_genedb --sqanti_output --bam ${bams.join(' ')} --labels ${sample_ids.join(' ')} --data_type pacbio_ccs -o ${chrom} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --clean_start
     """
 }
 
 /////////Two-pass IsoQuant///////////
 process run_isoquant_firstPass {
-label 'massive_long_job'
+label 'isoquant_firstPass'
 
   input:
       tuple val(chrom), val(sample_id), path(bam), path(bai), path(genedb), path(fasta), path(fai)
@@ -448,15 +484,14 @@ label 'massive_long_job'
 
   script:
   """
-  isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${bam} --labels ${sample_id} --data_type pacbio_ccs -o ${sample_id} -p ${sample_id}.${chrom} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format linear --bam_tags CB --no_secondary --debug --no_model_construction
+  isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${bam} --labels ${sample_id} --data_type pacbio_ccs -o ${sample_id} -p ${sample_id}.${chrom} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --debug --no_model_construction
   """
 }
 ////////////////////
 ///chrM processes///
 ////////////////////
 process run_isoquant_firstPass_withmodelconstruction {
-cache = 'lenient'
-label 'massive_long_job'
+label 'isoquant_firstPass_withmodelconstruction'
 
   input:
       tuple val(chrom), val(sample_id), path(bam), path(bai), path(genedb), path(fasta), path(fai)
@@ -464,7 +499,7 @@ label 'massive_long_job'
       tuple val(chrom), val(sample_id), path("${sample_id}/"),path("${sample_id}/${sample_id}.${chrom}/${sample_id}.${chrom}.read_assignments.tsv.gz"), path(bam)
   script:
   """
-  isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${bam} --labels ${sample_id} --data_type pacbio_ccs -o ${sample_id} -p ${sample_id}.${chrom} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format linear --bam_tags CB --no_secondary --debug
+  isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${bam} --labels ${sample_id} --data_type pacbio_ccs -o ${sample_id} -p ${sample_id}.${chrom} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --debug
   """
 }
 
@@ -476,44 +511,65 @@ process replace_novel_names_firsPass_singlenovelname {
       tuple val(chrom), val(sample_id), path(isoquant_output)
 
     output:
-        tuple val(chrom), val(sample_id), path("${isoquant_output}/${sample_id}.${chrom}_renamed/")
+        tuple val(chrom), val(sample_id), path("${sample_id}.${chrom}_renamed/")
 
 
     script:
     """
     input_dir=${isoquant_output}/${sample_id}.${chrom}/
-    output_dir=${isoquant_output}/${sample_id}.${chrom}_renamed/
+    output_dir=${sample_id}.${chrom}_renamed/
     mkdir -p \$output_dir
 
     transcriptgenefix_file_suffixes=(\\
-    .transcript_model_counts.tsv \\
-    .transcript_model_grouped_counts_linear.tsv \\
-    .transcript_model_grouped_counts.tsv \\
-    .transcript_model_grouped_tpm.tsv \\
+    .discovered_gene_counts.tsv  \\
+    .discovered_gene_grouped_counts.features.tsv \\
+    .discovered_gene_grouped_counts.linear.tsv \\
+    .discovered_gene_grouped_tpm.features.tsv \\
+    .discovered_gene_tpm.tsv \\
+    .discovered_transcript_counts.tsv \\
+    .discovered_transcript_grouped_counts.features.tsv \\
+    .discovered_transcript_grouped_counts.linear.tsv \\
+    .discovered_transcript_grouped_tpm.features.tsv \\
+    .discovered_transcript_tpm.tsv \\
+    .gene_counts.tsv \\
+    .gene_grouped_counts.features.tsv \\
+    .gene_grouped_counts.linear.tsv \\
+    .gene_grouped_tpm.features.tsv \\
+    .novel_vs_known.SQANTI-like.tsv \\
     .transcript_model_reads.tsv.gz \\
     .transcript_models.gtf \\
-    .transcript_model_tpm.tsv \\
-    .transcript_tpm.tsv \\
-    .transcript_counts.tsv \\
-    .transcript_grouped_counts_linear.tsv \\
-    .transcript_grouped_counts.tsv \\
-    .transcript_grouped_tpm.tsv \\
-    .novel_vs_known.SQANTI-like.tsv \\
     .extended_annotation.gtf \\
-    .gene_counts.tsv \\
-    .gene_grouped_counts_linear.tsv \\
-    .gene_grouped_counts.tsv \\
-    .gene_grouped_tpm.tsv \\
-    .gene_tpm.tsv \\
+    .transcript_counts.tsv \\
+    .transcript_grouped_counts.features.tsv \\
+    .transcript_grouped_counts.linear.tsv  \\
+    .transcript_grouped_tpm.features.tsv \\
     )
 
     asis_file_suffixes=(\\
-    .intron_grouped_counts.tsv \\
+    .intron_grouped_counts.linear.tsv  \\
     .intron_counts.tsv \\
     .exon_counts.tsv \\
-    .exon_grouped_counts.tsv \\
-    .corrected_reads.bed.gz \\
+    .exon_grouped_counts.linear.tsv \\
+    .discovered_gene_grouped_counts.matrix.mtx \\
+    .discovered_gene_grouped_tpm.matrix.mtx \\
+    .discovered_transcript_grouped_counts.matrix.mtx \\
+    .discovered_transcript_grouped_tpm.matrix.mtx \\
+    .gene_grouped_counts.matrix.mtx \\
+    .gene_grouped_tpm.matrix.mtx \\
+    .transcript_grouped_counts.matrix.mtx \\
+    .transcript_grouped_tpm.matrix.mtx \\
+    .transcript_grouped_tpm.barcodes.tsv \\
+    .transcript_grouped_counts.barcodes.tsv \\
+    .gene_grouped_tpm.barcodes.tsv \\
+    .gene_grouped_counts.barcodes.tsv \\
+    .discovered_transcript_grouped_tpm.barcodes.tsv \\
+    .discovered_transcript_grouped_counts.barcodes.tsv \\
+    .discovered_gene_grouped_tpm.barcodes.tsv \\
+    .discovered_gene_grouped_counts.barcodes.tsv \\
     .read_assignments.tsv.gz \\
+    .corrected_reads.bed.gz \\
+    .transcript_tpm.tsv \\
+    .gene_tpm.tsv \\
     )
 
     exonfix_file_suffixes=(\\
@@ -525,26 +581,39 @@ process replace_novel_names_firsPass_singlenovelname {
     for suffix in \${transcriptgenefix_file_suffixes[@]}; do
       input_f="\${input_dir}${sample_id}.${chrom}\${suffix}"
       output_f="\${output_dir}${sample_id}.${chrom}\${suffix}"
-      zcat -f \${input_f} | sed -E "s/(transcript[0-9]+)\\.([^.]+)\\.([^.]+)/\\1.\\2_${sample_id}.\\3/g; s/(novel_gene)_([^_]+)_([0-9]+)/\\1_${sample_id}_\\3/g" > \${output_f}
+      if [[ -e "\$input_f" ]]; then
+        zcat -f \${input_f} | sed -E "s/(transcript[0-9]+)\\.([^.]+)\\.([^.]+)/\\1.\\2_${sample_id}.\\3/g; s/(novel_gene)_([^_]+)_([0-9]+)/\\1_${sample_id}_\\3/g" > \${output_f}
+      fi;
     done;
 
     for suffix in \${asis_file_suffixes[@]}; do
       input_f="\${input_dir}${sample_id}.${chrom}\${suffix}"
       output_f="\${output_dir}${sample_id}.${chrom}\${suffix}"
-      cp \${input_f} \${output_f}
+      if [[ -e "\$input_f" ]]; then
+        cp \${input_f} \${output_f}
+      fi;
     done;
 
     #We also need to fix exon_ids in both extended_annotation and transcript_models GTFs
     for suffix in \${exonfix_file_suffixes[@]}; do
       #saving exonfixed GTFs as tmp file
       output_f_noexonfix="\${output_dir}${sample_id}.${chrom}\${suffix}";
-      output_f_withexonfixtmp="\${output_dir}${sample_id}.${chrom}\${suffix}.tmp";
-      bash ${baseDir}/scripts/fix_exon_ids.sh "\${output_f_noexonfix}" "\${output_f_withexonfixtmp}" "${sample_id}";
-      #reverting to original name
-      rm \${output_f_noexonfix}
-      mv \${output_f_withexonfixtmp} \${output_f_noexonfix}
+      if [[ -e "\$output_f_noexonfix" ]]; then
+        output_f_withexonfixtmp="\${output_dir}${sample_id}.${chrom}\${suffix}.tmp";
+        bash ${baseDir}/scripts/fix_exon_ids.sh "\${output_f_noexonfix}" "\${output_f_withexonfixtmp}" "${sample_id}";
+        #reverting to original name
+        rm \${output_f_noexonfix}
+        mv \${output_f_withexonfixtmp} \${output_f_noexonfix}
+      fi;
     done;
 
+    #This should later be added to isoquant_chunked process
+    #There is a bug in Isoquant where if i include only inconsistent reads it still generates known isoforms in the .discovered_transcript_counts.tsv and discovered_transcript_grouped_counts.linear.tsv file (fixed in IsoQuant 3.7.0 so this is extra cautious)
+    output_suffix_withknown=.discovered_transcript_counts.tsv
+    output_suffix_noknown=.discovered_transcript_counts.noknown.tsv
+    output_f_withknown="\${output_dir}${sample_id}.${chrom}\${output_suffix_withknown}"
+    output_f_noknown="\${output_dir}${sample_id}.${chrom}\${output_suffix_noknown}"
+    grep -v -e "__ambiguous" -e "__no_feature" -e "__not_aligned" \${output_f_withknown} > \${output_f_noknown}
     """
 }
 /////////////////////////////
@@ -553,7 +622,7 @@ process replace_novel_names_firsPass_singlenovelname {
 
 
 process create_model_construction_bam {
-label 'mini_job_local'
+label 'mini_job'
 
   input:
       tuple val(chrom), val(sample_id),path(read_assignment_f), path(bam)
@@ -581,6 +650,6 @@ label 'mini_job_local'
       tuple val(chrom), path("${chrom}/")
   script:
   """
-    isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${model_consutrciont_bams.join(' ')} --labels ${sample_ids.join(' ')} --data_type pacbio_ccs -o ${chrom} -p ${chrom} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format linear --bam_tags CB --no_secondary --debug
+    isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${model_consutrciont_bams.join(' ')} --labels ${sample_ids.join(' ')} --data_type pacbio_ccs -o ${chrom} -p ${chrom} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --debug
   """
 }
