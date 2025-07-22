@@ -48,6 +48,7 @@ workflow fltnc {
         .map { it -> [it.sample_id, it.long_read_path] } // Create a tuple with bam_path and sample_id
         .set { hifi_bam_tuples }
 
+<<<<<<< HEAD
       /// Every process from now on outputs a (sample_id,bam_file) tuple which is fed on to the next process
       reads_split           = split_reads(hifi_bam_tuples,params.skera_primers)
       primer_removed        = remove_primer(reads_split.split_reads_tuple,params.tenx_primers)
@@ -56,6 +57,21 @@ workflow fltnc {
       /// refined_bam_stats = postrefine_stats(refined_reads.refined_bam)
     emit:
       refined_bam_tuples
+=======
+    /// Obtaining (sample_id,bam_file) tuples from the input_samples.csv file
+    Channel
+    	.fromPath(params.input_samples_path)
+    	.splitCsv(sep: ',', header: true)
+    	.map { it -> [it.sample_id, it.long_read_path] } // Create a tuple with bam_path and sample_id
+    	.set { hifi_bam_tuples }
+
+    /// Every process from now on outputs a (sample_id,bam_file) tuple which is fed on to the next process
+    reads_split           = split_reads(hifi_bam_tuples,params.skera_primers)
+    primer_removed        = remove_primer(reads_split.split_reads_tuple,params.tenx_primers)
+    tagged                = tag_bam(primer_removed.removed_primer_tuple)
+    refined_reads         = refine_reads(tagged.tagged_tuple,params.tenx_primers,params.min_polya_length)
+    //refined_bam_stats = postrefine_stats(refined_reads.refined_bam)
+>>>>>>> origin/main
 }
 
 
@@ -148,6 +164,7 @@ workflow map_pbmm2 {
     map_pbmm2_process(input_ch)
 }
 
+<<<<<<< HEAD
 workflow isoquant_twopass_process {
 
   take:
@@ -188,11 +205,71 @@ workflow isoquant_twopass_process {
     (nochrM_output_chs.corrected_reads).concat(chrM_output_chs.corrected_reads)
     )
 }
+=======
+/*
+#############################
+#Different IsoQuant Worflows#
+#############################
+*/
+workflow isoquant_perchr {
+  def chromosomes_list = ['chr1', 'chr2', 'chr3', 'chr4', 'chr5', 'chr6', 'chr7', 'chr8', 'chr9',
+                          'chr10', 'chr11', 'chr12', 'chr13', 'chr14', 'chr15', 'chr16', 'chr17',
+                          'chr18', 'chr19', 'chr20', 'chr21', 'chr22', 'chrX', 'chrY','chrM']
+  ///def chromosomes_list = ['chr22']
+>>>>>>> origin/main
 
+  chrom_ch=chroms(chromosomes_list)
+  ///.filter{chrom -> chrom=='chr2' }
+  fullBam_ch=bamsWithExclusion()
+  ///.filter{tpl -> (tpl[0]=='Isogut14548280') || (tpl[0]=='Isogut14548279') || (tpl[0]=='Isogut14548278') || (tpl[0]=='Isogut14548277') || (tpl[0]=='Isogut14548276') || (tpl[0]=='Isogut14548275')}
+  chrom_genedb_fasta_chr_ch=genedb_perChr_wf(chrom_ch,params.gtf_f,params.genome_fasta_f)
+  preprocessed_bam_perChr_ch=preprocess_bam_perChr_wf(chrom_ch,fullBam_ch)
+
+  //TODO: implement isoquant_twopass_perChr_wf
+}
 workflow isoquant_twopass {
+<<<<<<< HEAD
     // Independent workflow entry for isoquant_twopass
     input_ch = 'independent workflow'
     isoquant_twopass_process(input_ch)
+=======
+
+
+  def chromosomes_list = ['chr1', 'chr2', 'chr3', 'chr4', 'chr5', 'chr6', 'chr7', 'chr8', 'chr9',
+                          'chr10', 'chr11', 'chr12', 'chr13', 'chr14', 'chr15', 'chr16', 'chr17',
+                          'chr18', 'chr19', 'chr20', 'chr21', 'chr22', 'chrX', 'chrY','chrM']
+  ///def chromosomes_list = ['chr22']
+
+  chrom_ch=chroms(chromosomes_list)
+  ///.filter{chrom -> chrom=='chr2' }
+  fullBam_ch=bamsWithExclusion()
+  ///.filter{tpl -> (tpl[0]=='Isogut14548280') || (tpl[0]=='Isogut14548279') || (tpl[0]=='Isogut14548278') || (tpl[0]=='Isogut14548277') || (tpl[0]=='Isogut14548276') || (tpl[0]=='Isogut14548275')}
+  chrom_genedb_fasta_chr_ch=genedb_perChr_wf(chrom_ch,params.gtf_f,params.genome_fasta_f)
+  preprocessed_bam_perChr_ch=preprocess_bam_perChr_wf(chrom_ch,fullBam_ch)
+
+  
+  //Processing chrM separately
+  preprocessed_bam_perChr_ch.filter{chrom,sample_id,bam,bai -> chrom=="chrM"}.set{preprocessed_bam_chrM_ch}
+  chrom_genedb_fasta_chr_ch.filter{chrom,gene_db,fa,fai -> chrom=="chrM"}.set{chrom_genedb_fasta_chrM_ch}
+  chrM_output_chs=isoquant_chrM(preprocessed_bam_chrM_ch,chrom_genedb_fasta_chrM_ch,chrom_sizes_f)
+  
+  //Processing other chromosomes separately
+  preprocessed_bam_perChr_ch.filter{chrom,sample_id,bam,bai -> chrom!="chrM"}.set{preprocessed_bam_nochrM_ch}
+  chrom_genedb_fasta_chr_ch.filter{chrom,gene_db,fa,fai -> chrom!="chrM"}.set{chrom_genedb_fasta_nochrM_ch}
+  nochrM_output_chs=isoquant_twopass_chunked_wf(preprocessed_bam_nochrM_ch,chrom_genedb_fasta_nochrM_ch,chrom_sizes_f,params.chunks)
+  
+  //Collecting output: MTX, GTF, reads
+  collect_output_wf(
+  (nochrM_output_chs.isoform_counts).concat(chrM_output_chs.isoform_counts),
+  (nochrM_output_chs.gene_counts).concat(chrM_output_chs.gene_counts),
+  (nochrM_output_chs.existing_gtf).concat(chrM_output_chs.existing_gtf),
+  (nochrM_output_chs.extended_gtf).concat(chrM_output_chs.extended_gtf),
+  (nochrM_output_chs.assignment_reads).concat(chrM_output_chs.assignment_reads),
+  (nochrM_output_chs.transcriptmodel_reads).concat(chrM_output_chs.transcriptmodel_reads),
+  (nochrM_output_chs.corrected_reads).concat(chrM_output_chs.corrected_reads)
+  )
+  
+>>>>>>> origin/main
 }
 
 workflow sqanti3 {

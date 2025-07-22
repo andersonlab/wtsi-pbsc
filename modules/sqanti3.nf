@@ -24,7 +24,7 @@ process SQANTI3_QC {
 }
 
 process SQANTI3_FILTER {
-  label 'mini_job_local'
+  label 'mini_job'
 
   publishDir "${params.results_output}results/transcript_info/sqanti3/", mode: 'copy', overwrite: true
 
