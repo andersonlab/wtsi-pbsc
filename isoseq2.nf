@@ -38,6 +38,9 @@ if(params.chunks) {
   chrom_sizes_f=params.nf_basedir+"data/hg38.chrom.sizes"
 }
 
+assert params.run_mode in ['with_quant', 'pre_quant'] : "ERROR: params.run_mode must be one of: 'with_quant', 'pre_quant'"
+
+
 /// This QC workflow will do the pre-processing in: https://isoseq.how/umi/cli-workflow.html
 workflow fltnc {
     main:
@@ -250,9 +253,10 @@ workflow deconvolutionwf {
 }
 
 workflow full{
-
   fltnc()
   correct_barcodes_process(fltnc.out.refined_bam_tuples)
   deconvolution(correct_barcodes_process.out.mapped_reads)
-  isoquant_twopass_process(deconvolution.out.fullBam_ch)
+  if (params.run_mode == 'with_quant'){ 
+    isoquant_twopass_process(deconvolution.out.fullBam_ch)
+  }
 }
