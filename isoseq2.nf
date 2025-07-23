@@ -48,7 +48,6 @@ workflow fltnc {
         .map { it -> [it.sample_id, it.long_read_path] } // Create a tuple with bam_path and sample_id
         .set { hifi_bam_tuples }
 
-<<<<<<< HEAD
       /// Every process from now on outputs a (sample_id,bam_file) tuple which is fed on to the next process
       reads_split           = split_reads(hifi_bam_tuples,params.skera_primers)
       primer_removed        = remove_primer(reads_split.split_reads_tuple,params.tenx_primers)
@@ -57,21 +56,6 @@ workflow fltnc {
       /// refined_bam_stats = postrefine_stats(refined_reads.refined_bam)
     emit:
       refined_bam_tuples
-=======
-    /// Obtaining (sample_id,bam_file) tuples from the input_samples.csv file
-    Channel
-    	.fromPath(params.input_samples_path)
-    	.splitCsv(sep: ',', header: true)
-    	.map { it -> [it.sample_id, it.long_read_path] } // Create a tuple with bam_path and sample_id
-    	.set { hifi_bam_tuples }
-
-    /// Every process from now on outputs a (sample_id,bam_file) tuple which is fed on to the next process
-    reads_split           = split_reads(hifi_bam_tuples,params.skera_primers)
-    primer_removed        = remove_primer(reads_split.split_reads_tuple,params.tenx_primers)
-    tagged                = tag_bam(primer_removed.removed_primer_tuple)
-    refined_reads         = refine_reads(tagged.tagged_tuple,params.tenx_primers,params.min_polya_length)
-    //refined_bam_stats = postrefine_stats(refined_reads.refined_bam)
->>>>>>> origin/main
 }
 
 
