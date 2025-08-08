@@ -101,10 +101,10 @@ workflow correct_barcodes_process {
       mapped_chunks_ch=mapped_chunks.map_tuple.groupTuple()
 
       mapped_reads=combine_mupped(mapped_chunks_ch)
-
-      //combined_dedup_ch=combine_dedups.out.dedup_tuple
-
-      //dedup_bam_tuples = bam_stats(combined_dedup_ch, params.barcode_correction_method,params.barcode_correction_percentile)
+      //these three should create combined dedup files and their stats
+      combine_dedups(dedup_reads.out.dedup_tuple)
+      combined_dedup_ch=combine_dedups.out.dedup_tuple
+      bam_stats(combined_dedup_ch, params.barcode_correction_method,params.barcode_correction_percentile)
 
   emit:
     mapped_reads
