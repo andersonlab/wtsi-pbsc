@@ -136,6 +136,7 @@ process combine_dedups {
 
     script:
     """
+    echo "test" > test.txt
  	samtools merge -f ${sample_id}.dedup.bam ${dedup_bam_chunks.join(' ')}
     samtools index -@ ${task.cpus} ${sample_id}.dedup.bam
 
@@ -173,7 +174,10 @@ process bam_stats {
 
 
     output:
-        tuple val(sample_id), path(dedup_bam), path("${sample_id}.dedup.bam.bai")
+        //tuple val(sample_id), path(dedup_bam), path("${sample_id}.dedup.bam.bai")
+        path "*.dedup.json"
+        path "*.dedup.tsv"
+
 
     script:
     """

@@ -67,10 +67,20 @@ workflow correct_barcodes_process {
   take:
     refined_bam_tuples
   main:
-      def excluded_samples_list = file(params.exclude_samples).exists() ?
-        file(params.exclude_samples).text.split('\n').drop(1).collect { it.split(',')[0].trim() } : []
-
-      println "Excluded samples: $excluded_samples_list"
+      //FIX situation with excluding list
+      //def excluded_samples_list = file(params.exclude_samples).exists() ?
+      //  file(params.exclude_samples).text.split('\n').drop(1).collect { it.split(',')[0].trim() } : []
+      
+      def excluded_samples_list = []
+      if (params.exclude_samples) {
+        def exclude_file = file(params.exclude_samples)
+          if (exclude_file.exists()) {
+            excluded_samples_list = exclude_file.text.split('\n').drop(1).collect { it.split(',')[0].trim() } : []
+          } else {
+              log.warn "Exclusion file ${params.exclude_samples} does not exist. Processing all samples."
+          }
+      }
+      //println "Excluded samples: $excluded_samples_list"
       if (refined_bam_tuples == 'independent workflow'){
           Channel
             .fromPath(params.input_samples_path)
@@ -102,9 +112,11 @@ workflow correct_barcodes_process {
 
       mapped_reads=combine_mupped(mapped_chunks_ch)
       //these three should create combined dedup files and their stats
-      combine_dedups(dedup_reads.out.dedup_tuple)
-      combined_dedup_ch=combine_dedups.out.dedup_tuple
-      bam_stats(combined_dedup_ch, params.barcode_correction_method,params.barcode_correction_percentile)
+      deduped_chunks=dedup_reads.out.dedup_tuple
+      deduped_chunks_ch=deduped_chunks.groupTuple()
+      combine_dedups(deduped_chunks_ch)
+      //combined_dedup_ch=combine_dedups.out.dedup_tuple
+      bam_stats(combine_dedups.out.dedup_tuple, params.barcode_correction_method,params.barcode_correction_percentile)
 
   emit:
     mapped_reads
@@ -158,16 +170,16 @@ workflow isoquant_twopass_process {
     (nochrM_output_chs.corrected_reads).concat(chrM_output_chs.corrected_reads)
     )
 }
-
-  chrom_ch=chroms(chromosomes_list)
-  ///.filter{chrom -> chrom=='chr2' }
-  fullBam_ch=bamsWithExclusion()
-  ///.filter{tpl -> (tpl[0]=='Isogut14548280') || (tpl[0]=='Isogut14548279') || (tpl[0]=='Isogut14548278') || (tpl[0]=='Isogut14548277') || (tpl[0]=='Isogut14548276') || (tpl[0]=='Isogut14548275')}
-  chrom_genedb_fasta_chr_ch=genedb_perChr_wf(chrom_ch,params.gtf_f,params.genome_fasta_f)
-  preprocessed_bam_perChr_ch=preprocess_bam_perChr_wf(chrom_ch,fullBam_ch)
-
-  //TODO: implement isoquant_twopass_perChr_wf
-}
+//FIND where to put these lines after merging
+//  chrom_ch=chroms(chromosomes_list)
+//  ///.filter{chrom -> chrom=='chr2' }
+//  fullBam_ch=bamsWithExclusion()
+//  ///.filter{tpl -> (tpl[0]=='Isogut14548280') || (tpl[0]=='Isogut14548279') || (tpl[0]=='Isogut14548278') || (tpl[0]=='Isogut14548277') || (tpl[0]=='Isogut14548276') || (tpl[0]=='Isogut14548275')}
+//  chrom_genedb_fasta_chr_ch=genedb_perChr_wf(chrom_ch,params.gtf_f,params.genome_fasta_f)
+//  preprocessed_bam_perChr_ch=preprocess_bam_perChr_wf(chrom_ch,fullBam_ch)
+//
+//  //TODO: implement isoquant_twopass_perChr_wf
+//}
 workflow isoquant_twopass {
     // Independent workflow entry for isoquant_twopass
     input_ch = 'independent workflow'
@@ -198,9 +210,18 @@ workflow deconvolution{
   take:
     mapped_reads
   main:
-
-    def excluded_samples_list = file(params.exclude_samples).exists() ?
-      file(params.exclude_samples).text.split('\n').drop(1).collect { it.split(',')[0].trim() } : []
+    //FIX situation with excluding list
+    //def excluded_samples_list = file(params.exclude_samples).exists() ?
+    //  file(params.exclude_samples).text.split('\n').drop(1).collect { it.split(',')[0].trim() } : []
+    def excluded_samples_list = []
+      if (params.exclude_samples) {
+        def exclude_file = file(params.exclude_samples)
+          if (exclude_file.exists()) {
+            excluded_samples_list = exclude_file.text.split('\n').drop(1).collect { it.split(',')[0].trim() } : []
+          } else {
+              log.warn "Exclusion file ${params.exclude_samples} does not exist. Processing all samples."
+          }
+      }
 
     if (mapped_reads == 'independent workflow'){
     Channel
