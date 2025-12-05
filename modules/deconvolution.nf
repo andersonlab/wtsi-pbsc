@@ -72,13 +72,15 @@ process vireo {
 
     container "/software/hgi/containers/yascp/yascp.cog.sanger.ac.uk-public-yascp_qc_jan_2025.sif"
 
-    publishDir "${params.results_output}deconvolution/vireo", mode: 'copy'
+    publishDir "${params.results_output}deconvolution/vireo", mode: 'copy', pattern: "{vireo__*,barcodes__*.tsv}"
+    
 
     input:
         tuple val(sample_id),path(cellsnp),val(nr_samples)
     output:
         tuple val(sample_id), path("barcodes__*.tsv"), emit: barcodes_tuple
         path("vireo__${sample_id}"), emit: vireo_results
+        tuple val(sample_id), path("vireo_${sample_id}/GT_donors.vireo.vcf.gz"), emit: sample_donor_vcf//, path("vireo_${sample_id}/GT_donors.vireo.vcf.gz.csi"), emit: sample_donor_vcf
 
     script:
     """
