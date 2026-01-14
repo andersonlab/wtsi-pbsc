@@ -320,8 +320,8 @@ workflow MATCH_GT_VIREO {
       .groupTuple()
       .set{ ch_donor_assign_panel }
 
-    ASSIGN_DONOR_OVERALL(ch_donor_assign_panel)
-    ch_versions = ch_versions.mix(ASSIGN_DONOR_OVERALL.out.versions)
+    //ASSIGN_DONOR_OVERALL(ch_donor_assign_panel)
+    //ch_versions = ch_versions.mix(ASSIGN_DONOR_OVERALL.out.versions)
 
   emit:
 //    pool_id_donor_assignments_csv = ASSIGN_DONOR_OVERALL.out.donor_assignments

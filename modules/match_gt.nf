@@ -42,7 +42,8 @@ process VIREO_GT_FIX_HEADER
     path(genome)
 
   output:
-    tuple val(pool_id), path("${vireo_fixed_vcf}"), path("${vireo_fixed_vcf}.tbi"), emit: gt_pool
+    //tuple val(pool_id), path("${vireo_fixed_vcf}"), path("${vireo_fixed_vcf}.tbi"), emit: gt_pool
+    tuple val(pool_id), path("pre_${vireo_fixed_vcf}"), path("pre_${vireo_fixed_vcf}.tbi"), emit: gt_pool
     path "versions.yml", emit: versions
 
   script:
@@ -62,8 +63,8 @@ process VIREO_GT_FIX_HEADER
     echo '##FORMAT=<ID=PL,Number=G,Type=Integer,Description="???">' >> header.txt
     echo '##FORMAT=<ID=AD,Number=G,Type=Integer,Description="????n">' >> header.txt
     echo '##FORMAT=<ID=DP,Number=G,Type=Integer,Description="????n">' >> header.txt
-    samtools faidx ${genome}
-    awk '{print "##contig=<ID="\$1",length="\$2">"}' ${genome}.fai >> header.txt
+    #samtools faidx ${genome}
+    #awk '{print "##contig=<ID="\$1",length="\$2">"}' ${genome}.fai >> header.txt
     tail -n1 init_head.txt >> header.txt
 
     # sort VCF file (bcftools sort bails out with an error)
@@ -76,11 +77,11 @@ process VIREO_GT_FIX_HEADER
     #bcftools view -Oz -o pre_${vireo_fixed_vcf}
     bcftools reheader -h header.txt ${sorted_vcf} | \
     bcftools view -Oz -o pre_${vireo_fixed_vcf}
-    #tabix -p vcf pre_${vireo_fixed_vcf}
-    bcftools index -t pre_${vireo_fixed_vcf}
-    bcftools +fixref pre_${vireo_fixed_vcf} -Oz -o ${vireo_fixed_vcf} -- -d -f ${genome} -m flip-all
+    tabix -p vcf pre_${vireo_fixed_vcf}
+    #bcftools index -t pre_${vireo_fixed_vcf}
+    #bcftools +fixref pre_${vireo_fixed_vcf} -Oz -o ${vireo_fixed_vcf} -- -d -f ${genome} -m flip-all
     #tabix -p vcf ${vireo_fixed_vcf}
-    bcftools index -t ${vireo_fixed_vcf}
+    #bcftools index -t ${vireo_fixed_vcf}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
@@ -134,7 +135,7 @@ process ASSIGN_DONOR_FROM_PANEL
   // sum gtcheck discrepancy scores from multiple ouputput files of the same panel
   tag "${pool_panel_id}"
   label 'gtcheck_processing'
-  publishDir  path: "${params.results_output}deconvolution/gtmatch_test/${pool_id}",
+  publishDir  path: "${params.results_output}deconvolution/gtmatch_test2/${pool_id}",
           pattern: "*.csv",
           mode: 'copy',
           overwrite: "true"
@@ -174,10 +175,10 @@ process ASSIGN_DONOR_OVERALL
   // decide final donor assignment across different panels from per-panel donor assignments
   tag "${pool_id}"
 
-  publishDir  path: "${params.results_output}deconvolution/gtmatch_test/${pool_id}",
-          pattern: "*.csv",
-          mode: 'copy',
-          overwrite: "true"
+  //publishDir  path: "${params.results_output}deconvolution/gtmatch_test/${pool_id}",
+  //        pattern: "*.csv",
+  //        mode: 'copy',
+  //        overwrite: "true"
 
   //if (workflow.containerEngine == 'singularity' && !params.singularity_pull_docker_container) {
   //    container "${params.yascp_container}"
