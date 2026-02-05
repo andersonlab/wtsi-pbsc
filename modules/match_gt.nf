@@ -94,6 +94,10 @@ process VIREO_GT_FIX_HEADER
 process GT_MATCH_POOL_AGAINST_PANEL
 {
   tag "${pool_id}_vs_${panel_id}"
+  publishDir  path: "${params.results_output}deconvolution/gtmatch/${pool_id}",
+          pattern: "*.csv",
+          mode: 'copy',
+          overwrite: "true"
 
   //if (workflow.containerEngine == 'singularity' && !params.singularity_pull_docker_container) {
   //    container "${params.yascp_container}"
@@ -135,7 +139,7 @@ process ASSIGN_DONOR_FROM_PANEL
   // sum gtcheck discrepancy scores from multiple ouputput files of the same panel
   tag "${pool_panel_id}"
   label 'gtcheck_processing'
-  publishDir  path: "${params.results_output}deconvolution/gtmatch_test2/${pool_id}",
+  publishDir  path: "${params.results_output}deconvolution/gtmatch/${pool_id}",
           pattern: "*.csv",
           mode: 'copy',
           overwrite: "true"
@@ -150,7 +154,7 @@ process ASSIGN_DONOR_FROM_PANEL
 
   output:
     tuple val(pool_id), path("${assignment_table_out}"), emit: gtcheck_assignments
-    path("${score_table_out}", emit: gtcheck_scores)
+    //path("${score_table_out}", emit: gtcheck_scores)
     path "versions.yml", emit: versions
 
   
@@ -175,10 +179,10 @@ process ASSIGN_DONOR_OVERALL
   // decide final donor assignment across different panels from per-panel donor assignments
   tag "${pool_id}"
 
-  //publishDir  path: "${params.results_output}deconvolution/gtmatch_test/${pool_id}",
-  //        pattern: "*.csv",
-  //        mode: 'copy',
-  //        overwrite: "true"
+  publishDir  path: "${params.results_output}deconvolution/gtmatch/${pool_id}",
+          pattern: "*.csv",
+          mode: 'copy',
+          overwrite: "true"
 
   //if (workflow.containerEngine == 'singularity' && !params.singularity_pull_docker_container) {
   //    container "${params.yascp_container}"
@@ -191,9 +195,9 @@ process ASSIGN_DONOR_OVERALL
 
   output:
     tuple val(pool_id), path("${donor_assignment_file}"), emit: donor_assignments
-    path(stats_assignment_table_out), emit: donor_match_table
+    //path(stats_assignment_table_out), emit: donor_match_table
     tuple val(pool_id),path(stats_assignment_table_out), emit: donor_match_table_with_pool_id
-    path("*.csv")
+    //path("*.csv")
     path "versions.yml", emit: versions
 
   label 'gtcheck_summary'
@@ -213,3 +217,38 @@ process ASSIGN_DONOR_OVERALL
   """
 }
 
+process COMBINE_ASSIGN
+{
+  // decide final donor assignment across different panels from per-panel donor assignments
+  tag "${pool_id}"
+
+  publishDir  path: "${params.results_output}deconvolution/gtmatch",
+          pattern: "combined_*.csv",
+          mode: 'copy',
+          overwrite: "true"
+
+  //if (workflow.containerEngine == 'singularity' && !params.singularity_pull_docker_container) {
+  //    container "${params.yascp_container}"
+  //} else {
+  //    container "${params.yascp_container_docker}"
+  //}
+
+  input:
+    path assignment_table
+
+  output:
+    path("combined_*.csv"), emit: donor_match_tables
+    path "versions.yml", emit: versions
+
+  label 'gtcheck_summary'
+
+  script:
+  """
+    combine_assignments.py
+    
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        python: \$(python --version | sed 's/Python //g')
+    END_VERSIONS
+  """
+}

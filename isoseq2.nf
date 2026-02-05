@@ -21,7 +21,7 @@ include {mtx_subset_wf} from './subworkflows/core/mtx_subset.nf'
 include {customPublish as customPublishFilteredH5ADIsoform} from './modules/customPublish.nf'
 include {customPublish as customPublishFilteredMTXIsoform} from  './modules/customPublish.nf'
 
-include {GT_MATCH_POOL_AGAINST_PANEL; ASSIGN_DONOR_FROM_PANEL; ASSIGN_DONOR_OVERALL; VIREO_GT_FIX_HEADER} from  './modules/match_gt.nf'
+include {GT_MATCH_POOL_AGAINST_PANEL; ASSIGN_DONOR_FROM_PANEL; ASSIGN_DONOR_OVERALL; VIREO_GT_FIX_HEADER; COMBINE_ASSIGN} from  './modules/match_gt.nf'
 
 /// Setting default parameters
 if(!params.barcode_correction_percentile) {
@@ -298,6 +298,9 @@ workflow MATCH_GT_VIREO {
     ).splitCsv(header: true, sep: '\t')
     .map { row -> tuple(row.label, file(row.vcf_file_path), file("${row.vcf_file_path}.csi")) }
 
+    def tsv_entries = file(params.tsv_donor_panel_vcfs).splitCsv(header: true, sep: '\t')
+    def has_multiple_ref_vcfs = tsv_entries.size() > 1
+
     gt_math_pool_against_panel_input=sample_gt_vcf_ch.combine(ref_vcf_ch)
       .map { pool_id, vcf, vcf_tbi, ref_label, ref_vcf, ref_csi -> 
         tuple(pool_id, vcf, vcf_tbi, ref_label, ref_vcf, ref_csi)
@@ -312,7 +315,6 @@ workflow MATCH_GT_VIREO {
     GT_MATCH_POOL_AGAINST_PANEL.out.gtcheck_results.unique()
       .groupTuple()
       .set { gt_check_by_panel }
-    
 
     ASSIGN_DONOR_FROM_PANEL(gt_check_by_panel)
     ch_versions = ch_versions.mix(ASSIGN_DONOR_FROM_PANEL.out.versions)
@@ -320,9 +322,15 @@ workflow MATCH_GT_VIREO {
       .groupTuple()
       .set{ ch_donor_assign_panel }
 
-    //ASSIGN_DONOR_OVERALL(ch_donor_assign_panel)
-    //ch_versions = ch_versions.mix(ASSIGN_DONOR_OVERALL.out.versions)
+    assignment_ch=ASSIGN_DONOR_FROM_PANEL.out.gtcheck_assignments
 
+    if (has_multiple_ref_vcfs){
+      ASSIGN_DONOR_OVERALL(ch_donor_assign_panel)
+      ch_versions = ch_versions.mix(ASSIGN_DONOR_OVERALL.out.versions)
+      assignment_ch=assignment_ch.mix(ASSIGN_DONOR_OVERALL.out.donor_match_table_with_pool_id)
+    }
+    COMBINE_ASSIGN(assignment_ch.map { val, path -> path }.collect())
+    ch_versions = ch_versions.mix(COMBINE_ASSIGN.out.versions)
   emit:
 //    pool_id_donor_assignments_csv = ASSIGN_DONOR_OVERALL.out.donor_assignments
 //    donor_match_table = ASSIGN_DONOR_OVERALL.out.donor_match_table
