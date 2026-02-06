@@ -5,7 +5,7 @@ import re
 
 def combine_per_panel():
     file_list=glob.glob('pool_*_panel_*_gtcheck_donor_assignments.csv')
-    with open ("combined_gt_donor_assignment_per_panel.csv", "w") as fout:
+    with open ("combined_gt_donor_assignments_per_panel.csv", "w") as fout:
         fout.write('pool,panel,donor_query,donor_gt,donor_1,score0,score1,score_n,n,mean,sd,z0,z1\n')
         pattern = re.compile(r"^pool_(.+?)_panel_(.+?)_gtcheck_donor_assignments\.csv$")
         for file_name in file_list:
@@ -19,7 +19,7 @@ def combine_per_panel():
 
 def combine_overall():
     file_list=glob.glob('stats_*_gt_donor_assignments.csv')
-    with open ("combined_stats_gt_donor_assignments.csv", "w") as fout:
+    with open ("combined_gt_donor_assignments_overall.csv", "w") as fout:
         fout.write('pool,donor_query,donor_gt,score0,score1,score_n,n,mean,sd,z0,z1,final_panel\n')
         pattern = re.compile(r"^stats_(.+?)_gt_donor_assignments\.csv$")
         for file_name in file_list:

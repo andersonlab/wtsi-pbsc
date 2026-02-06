@@ -324,11 +324,15 @@ workflow MATCH_GT_VIREO {
 
     assignment_ch=ASSIGN_DONOR_FROM_PANEL.out.gtcheck_assignments
 
-    if (has_multiple_ref_vcfs){
-      ASSIGN_DONOR_OVERALL(ch_donor_assign_panel)
-      ch_versions = ch_versions.mix(ASSIGN_DONOR_OVERALL.out.versions)
-      assignment_ch=assignment_ch.mix(ASSIGN_DONOR_OVERALL.out.donor_match_table_with_pool_id)
-    }
+    //if (has_multiple_ref_vcfs){
+    //  ASSIGN_DONOR_OVERALL(ch_donor_assign_panel)
+    //  ch_versions = ch_versions.mix(ASSIGN_DONOR_OVERALL.out.versions)
+    //  assignment_ch=assignment_ch.mix(ASSIGN_DONOR_OVERALL.out.donor_match_table_with_pool_id)
+    //}
+    ASSIGN_DONOR_OVERALL(ch_donor_assign_panel)
+    ch_versions = ch_versions.mix(ASSIGN_DONOR_OVERALL.out.versions)
+    assignment_ch=assignment_ch.mix(ASSIGN_DONOR_OVERALL.out.donor_match_table_with_pool_id)
+
     COMBINE_ASSIGN(assignment_ch.map { val, path -> path }.collect())
     ch_versions = ch_versions.mix(COMBINE_ASSIGN.out.versions)
   emit:
