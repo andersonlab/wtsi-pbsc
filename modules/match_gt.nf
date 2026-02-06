@@ -244,7 +244,7 @@ process COMBINE_ASSIGN
 
   script:
   """
-    combine_assignments.py
+    combine_assignments.py ${params.ZSCORE_THRESH} ${params.ZSCORE_DIST_THRESH}
     
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
