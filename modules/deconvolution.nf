@@ -80,7 +80,7 @@ process vireo {
     output:
         tuple val(sample_id), path("barcodes__*.tsv"), emit: barcodes_tuple
         path("vireo__${sample_id}"), emit: vireo_results
-        tuple val(sample_id), path("vireo_${sample_id}/GT_donors.vireo.vcf.gz"), emit: sample_donor_vcf//, path("vireo_${sample_id}/GT_donors.vireo.vcf.gz.csi"), emit: sample_donor_vcf
+        tuple val(sample_id), path("vireo__${sample_id}/GT_donors.vireo.vcf.gz"), emit: sample_donor_vcf//, path("vireo__${sample_id}/GT_donors.vireo.vcf.gz.csi"), emit: sample_donor_vcf
 
     script:
     """
