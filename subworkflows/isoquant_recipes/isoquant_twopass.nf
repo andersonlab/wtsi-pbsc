@@ -268,6 +268,7 @@ workflow collect_output_wf {
     gtfs=collect_gtfs(input_gtf_ch,params.gtf_f,mtx_isoform_fs,"${params.results_output}results/gtf/")
     extended_gtf=gtfs[0]
     existing_gtf=gtfs[1]
+    assignment_reads_ch.view()
 
 
 }
