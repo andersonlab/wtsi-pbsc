@@ -22,6 +22,11 @@ include {customPublish as customPublishFilteredH5ADIsoform} from './modules/cust
 include {customPublish as customPublishFilteredMTXIsoform} from  './modules/customPublish.nf'
 
 include {GT_MATCH_POOL_AGAINST_PANEL; ASSIGN_DONOR_FROM_PANEL; ASSIGN_DONOR_OVERALL; VIREO_GT_FIX_HEADER; COMBINE_ASSIGN} from  './modules/match_gt.nf'
+include {MATCH_BARCODES; COMBINE_DONOR_ASIGNMENTS; REMOVE_DONOR_ASIGNMENTS; REPLACE_DONOR_ASIGNMENTS} from './modules/matching_barcodes.nf'
+
+include {GET_BARCODES; SPLIT_BAM; INDEX_SPLIT_BAM} from './modules/split_bam.nf'
+
+
 
 /// Setting default parameters
 if(!params.barcode_correction_percentile) {
@@ -256,6 +261,7 @@ workflow deconvolution{
     vireo(sampleNames_cellsnp_nrDons)
     sample_donor_vcf_ch=vireo.out.sample_donor_vcf
     barcode_channel=vireo.out.barcodes_tuple.transpose()
+    sample_vireo_donor_ids=vireo.out.sample_donor_ids
     combined_ch = for_deconv.combine(barcode_channel, by: 0)
     supset_bam_with_bai(combined_ch)
     fullBam_ch_pre = supset_bam_with_bai.out.per_donor_tuple
@@ -265,6 +271,7 @@ workflow deconvolution{
   emit:
     fullBam_ch
     sample_donor_vcf_ch
+    sample_vireo_donor_ids
 
 }
 ////gtcheck modify starts
@@ -339,7 +346,146 @@ workflow MATCH_GT_VIREO {
 //    pool_id_donor_assignments_csv = ASSIGN_DONOR_OVERALL.out.donor_assignments
 //    donor_match_table = ASSIGN_DONOR_OVERALL.out.donor_match_table
 //    donor_match_table_with_pool_id = ASSIGN_DONOR_OVERALL.out.donor_match_table_with_pool_id
+    match_gt=COMBINE_ASSIGN.out.gt_match_table
     versions = ch_versions
+}
+
+workflow MATCH_BARCODE_VIREO {
+  take:
+    sample_donor_vcf_ch
+  main:
+    Channel.empty().set { ch_versions }
+
+    if (sample_donor_vcf_ch == 'independent workflow'){
+      Channel
+        .fromPath(params.input_samples_path)
+        .splitCsv(sep: ',', header: true)
+        //.filter { it -> !(it.sample_id in excluded_samples_list) }
+        .map { it ->
+          def pool_id = it.sample_id
+          def tsv = "${params.results_output}deconvolution/vireo/vireo__${pool_id}/donor_ids.tsv"
+          [pool_id, tsv]
+        }
+        .set { sample_donor_vcf_ch }
+    }
+    //sample_donor_vcf_ch
+    //  .collectFile(name: 'vireo_map.tsv', newLine: true) { sample_id, file_path ->
+    //      "${sample_id}\t${file_path}"
+    //  }
+    //  .set { vireo_map }
+    vireo_map=sample_donor_vcf_ch.map { file -> tuple('vireo_map', file) }
+    MATCH_BARCODES(vireo_map, params.ref_barcode_list, params.min_n_common_barcodes, params.min_common_barcodes_percent)
+  emit:
+    match_barcodes=MATCH_BARCODES.out.match_barcodes
+}
+
+
+workflow COMBINE_DONOR_IDS {
+  take:
+    sample_donor_vcf_ch
+  main:
+    Channel.empty().set { ch_versions }
+
+    if (sample_donor_vcf_ch == 'independent workflow'){
+      Channel
+        .fromPath(params.input_samples_path)
+        .splitCsv(sep: ',', header: true)
+        //.filter { it -> !(it.sample_id in excluded_samples_list) }
+        .map { it ->
+          def pool_id = it.sample_id
+          def tsv = "${params.results_output}deconvolution/vireo/vireo__${pool_id}/donor_ids.tsv"
+          [pool_id, tsv]
+        }
+        .set { sample_donor_vcf_ch }
+      sample_donor_vcf_ch
+        .collectFile(name: 'vireo_map.tsv', newLine: true) { sample_id, file_path ->
+            "${sample_id}\t${file_path}"
+        }
+        .set { vireo_map }
+      //vireo_map=vireo_map.map { file -> tuple('vireo_map', file) }
+      ch_optional = channel.fromList(
+        [
+          "${params.results_output}deconvolution/sample_assignment/barcode_match/combined_barcode_donor_assignments.csv",
+          "${params.results_output}deconvolution/sample_assignment/gtmatch/combined_gt_donor_assignments_overall.csv"
+        ].collect { v -> file(v) }
+        .findAll { v -> v.exists() }
+      )
+      sample_donor_vcf_ch = vireo_map.mix(ch_optional).collect()
+    }
+
+    COMBINE_DONOR_ASIGNMENTS(sample_donor_vcf_ch)
+}
+
+workflow SPLIT_BAMS {
+  take:
+    pool_donor_ids_ch
+    mapped_bam_ch
+  main:
+    // Handle 'independent workflow' case - check if it's a value channel with that string
+    if (pool_donor_ids_ch == 'independent workflow') {
+      //assignment_file_ch = channel.fromPath("${params.results_output}deconvolution/sample_assignment/donor_assignment.csv")
+
+      pool_donor_ids_ch=channel.fromPath(params.input_samples_path)
+        .splitCsv(sep: ',', header: true)
+        //.filter { it -> !(it.sample_id in excluded_samples_list) }
+        .map { it ->
+          def pool_id = it.sample_id
+          def tsv = "${params.results_output}deconvolution/vireo/vireo__${pool_id}/donor_ids.tsv"
+          [pool_id, tsv]
+        }
+    }
+    if (mapped_bam_ch == 'independent workflow') {
+      mapped_bam_ch =channel.fromPath(params.input_samples_path)
+        .splitCsv(sep: ',', header: true)
+        //.filter { it -> !(it.sample_id in excluded_samples_list) }
+        .map { it ->
+          def pool_id = it.sample_id
+          def bam = "${params.results_output}qc/mapped/${pool_id}.mapped.realcells_only.bam"
+          def bai = "${params.results_output}qc/mapped/${pool_id}.mapped.realcells_only.bam.bai"
+          [pool_id, bam, bai]
+        }
+      
+    }
+
+    //This portion was done to do manual assignments but we decided that we are going to use automatic vireo names
+    // Use parentheses around conditions
+    //if (params.manual_assignment_file != null) {
+    //  REPLACE_DONOR_ASIGNMENTS(assignment_file_ch, params.manual_assignment_file)
+    //  assignment_file_ch = REPLACE_DONOR_ASIGNMENTS.out.asignments
+    //}
+    
+    //if (params.remove_assignment_file != null) {
+    //  REMOVE_DONOR_ASIGNMENTS(assignment_file_ch, params.remove_assignment_file)
+    //  assignment_file_ch = REMOVE_DONOR_ASIGNMENTS.out.asignments
+    //}
+    
+    // Use def for variable declarations
+    //def valid_donors = assignment_file_ch
+    //  .splitCsv(header: true)
+    //  .map { row -> tuple(row.pool, row.donor) }
+      //.toList()
+    
+    //combined_ch = valid_donors.combine(pool_donor_ids_ch, by: 0)
+    GET_BARCODES(pool_donor_ids_ch)
+    //barcode_lists=GET_BARCODES.out.barcode_lists.flatMap { val, paths ->
+    //  paths.collect { p -> tuple(val, p) }
+    //}
+    barcode_lists=GET_BARCODES.out.barcode_list
+    bam_ch = mapped_bam_ch.combine(barcode_lists, by: 0)
+    bam_ch.view()
+    SPLIT_BAM(bam_ch)
+    donor_bams = SPLIT_BAM.out.donor_bams.flatMap { val, paths ->
+      paths.collect { p -> tuple(p.simpleName, p) } }
+    INDEX_SPLIT_BAM(donor_bams)
+  emit:
+    bam_files=INDEX_SPLIT_BAM.out.donor_bams
+}
+
+workflow splitbam_wf {
+    // Independent workflow entry for deconvolution
+    input_ch = 'independent workflow'
+    SPLIT_BAMS(input_ch, input_ch)
+//    valid_donors=SPLIT_BAMS.out.valid_donors
 }
 
 workflow gt_match_wf {
@@ -348,6 +494,17 @@ workflow gt_match_wf {
     MATCH_GT_VIREO(input_ch)
 }
 ////gtcheck modify ends 
+workflow barcode_match_wf {
+    // Independent workflow entry for deconvolution
+    input_ch = 'independent workflow'
+    MATCH_BARCODE_VIREO(input_ch)
+}
+
+workflow assignment_wf {
+    // Independent workflow entry for deconvolution
+    input_ch = 'independent workflow'
+    COMBINE_DONOR_IDS(input_ch)
+}
 
 workflow deconvolutionwf {
     // Independent workflow entry for deconvolution
@@ -359,12 +516,27 @@ workflow full{
   fltnc()
   correct_barcodes_process(fltnc.out.refined_bam_tuples)
   deconvolution(correct_barcodes_process.out.mapped_reads)
+
+  vireo_donor_ids=deconvolution.out.sample_vireo_donor_ids
+  vireo_donor_ids.collectFile(name: 'vireo_map.tsv', newLine: true) { sample_id, file_path ->
+        "${sample_id}\t${file_path}"
+    }
+    .set { vireo_map }
+  vireo_map2=vireo_map
   ////gtcheck modify starts
   if (params.run_gtcheck == 'TRUE'){ 
     MATCH_GT_VIREO(deconvolution.out.sample_donor_vcf_ch)
+    vireo_map2=vireo_map2.mix(MATCH_GT_VIREO.out.match_gt)
   }
+  if (params.run_barcode_check == 'TRUE'){ 
+    MATCH_BARCODE_VIREO(vireo_map)
+    vireo_map2=vireo_map2.mix(MATCH_BARCODE_VIREO.out.match_barcodes)
+  }
+  vireo_map2 = vireo_map2.collect()
+  COMBINE_DONOR_IDS(vireo_map2)
   ////gtcheck modify endss
   if (params.run_mode == 'with_quant'){ 
     isoquant_twopass_process(deconvolution.out.fullBam_ch)
   }
+  SPLIT_BAMS(vireo_donor_ids, correct_barcodes_process.out.mapped_reads)
 }
