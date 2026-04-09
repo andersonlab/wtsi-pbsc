@@ -94,7 +94,7 @@ process VIREO_GT_FIX_HEADER
 process GT_MATCH_POOL_AGAINST_PANEL
 {
   tag "${pool_id}_vs_${panel_id}"
-  publishDir  path: "${params.results_output}deconvolution/gtmatch/${pool_id}",
+  publishDir  path: "${params.results_output}deconvolution/sample_assignment/gtmatch/${pool_id}",
           pattern: "*.csv",
           mode: 'copy',
           overwrite: "true"
@@ -139,7 +139,7 @@ process ASSIGN_DONOR_FROM_PANEL
   // sum gtcheck discrepancy scores from multiple ouputput files of the same panel
   tag "${pool_panel_id}"
   label 'gtcheck_processing'
-  publishDir  path: "${params.results_output}deconvolution/gtmatch/${pool_id}",
+  publishDir  path: "${params.results_output}deconvolution/sample_assignment/gtmatch/${pool_id}",
           pattern: "*.csv",
           mode: 'copy',
           overwrite: "true"
@@ -179,7 +179,7 @@ process ASSIGN_DONOR_OVERALL
   // decide final donor assignment across different panels from per-panel donor assignments
   tag "${pool_id}"
 
-  publishDir  path: "${params.results_output}deconvolution/gtmatch/${pool_id}",
+  publishDir  path: "${params.results_output}deconvolution/sample_assignment/gtmatch/${pool_id}",
           pattern: "*.csv",
           mode: 'copy',
           overwrite: "true"
@@ -222,7 +222,7 @@ process COMBINE_ASSIGN
   // decide final donor assignment across different panels from per-panel donor assignments
   tag "${pool_id}"
 
-  publishDir  path: "${params.results_output}deconvolution/gtmatch",
+  publishDir  path: "${params.results_output}deconvolution/sample_assignment/gtmatch",
           pattern: "combined_*.csv",
           mode: 'copy',
           overwrite: "true"
@@ -238,6 +238,7 @@ process COMBINE_ASSIGN
 
   output:
     path("combined_*.csv"), emit: donor_match_tables
+    path("combined_gt_donor_assignments_overall.csv"), emit: gt_match_table
     path "versions.yml", emit: versions
 
   label 'gtcheck_summary'
