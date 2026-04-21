@@ -1,4 +1,4 @@
-process pbmm2 {
+process PBMM2 {
     label 'map_reads'
     //publishDir "${params.results_output}qc/mapped", mode: 'copy'
 

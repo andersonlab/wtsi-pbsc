@@ -1,198 +1,73 @@
 nextflow.enable.dsl=2
 
 ///Modules
-include { split_reads; remove_primer; tag_bam; refine_reads } from './modules/fltnc.nf'
-include {barcode_correction; get_barcodes; supset_bam; supset_bam_with_bai; dedup_reads; combine_dedups; combine_mupped; bam_stats} from './modules/barcodes.nf'
-
-include { pbmm2 } from './modules/pbmm2.nf'
 include {SQANTI3_QC; SQANTI3_FILTER} from './modules/sqanti3.nf'
-///include {preprocess_bam; find_mapped_and_unmapped_regions_per_sampleChrom; acrossSamples_mapped_unmapped_regions_perChr; suggest_splits_binarySearch; split_bams; create_genedb_fasta_perChr; run_isoquant_chunked} from './modules/isoquant.nf'
-include { mpileup; cellsnp; vireo; subset_vcf }  from './modules/deconvolution.nf'
 
 ///Subworkflows
-include {chroms} from './subworkflows/core/chroms.nf'
-include {bamsWithExclusion} from './subworkflows/core/bamsWithExclusion.nf'
-include {preprocess_bam_perChr_wf} from './subworkflows/isoquant_components/preprocess_bam.nf'
-include {genedb_perChr_wf} from './subworkflows/isoquant_components/genedb.nf'
-include {isoquant_twopass_perChr_wf; isoquant_twopass_chunked_wf; isoquant_chrM;collect_output_wf} from './subworkflows/isoquant_recipes/isoquant_twopass.nf'
+include {BAM_PROCESSING} from './subworkflows/bam_processing/bam_processing.nf'
+include {DECONVOLUTION} from './subworkflows/deconvolution/deconvolution.nf'
+include {ISOQUANT_TWOPASS_PROCESS} from './subworkflows/isoquant_recipes/isoquant_twopass_process.nf'
+
 include {mtx_subset_wf} from './subworkflows/core/mtx_subset.nf'
 
 
-include {customPublish as customPublishFilteredH5ADIsoform} from './modules/customPublish.nf'
-include {customPublish as customPublishFilteredMTXIsoform} from  './modules/customPublish.nf'
-
-include {GT_MATCH_POOL_AGAINST_PANEL; ASSIGN_DONOR_FROM_PANEL; ASSIGN_DONOR_OVERALL; VIREO_GT_FIX_HEADER; COMBINE_ASSIGN} from  './modules/match_gt.nf'
-include {MATCH_BARCODES; COMBINE_DONOR_ASIGNMENTS; REMOVE_DONOR_ASIGNMENTS; REPLACE_DONOR_ASIGNMENTS} from './modules/matching_barcodes.nf'
-
-include {GET_BARCODES; SPLIT_BAM; INDEX_SPLIT_BAM} from './modules/split_bam.nf'
-
+//include {customPublish as customPublishFilteredH5ADIsoform} from './modules/customPublish.nf'
+//include {customPublish as customPublishFilteredMTXIsoform} from  './modules/customPublish.nf'
 
 
 /// Setting default parameters
 if(!params.barcode_correction_percentile) {
-  params.barcode_correction_percentile=99
+  params.barcode_correction_percentile=98
 }
 if(!params.min_polya_length) {
   params.min_polya_length=20
 }
 
-if(!params.exclude_samples) {
-  params.exclude_samples=[]
-}
+//if(!params.exclude_samples) {
+//  params.exclude_samples=[]
+//}
 
-if(params.chunks) {
-  chrom_sizes_f=params.nf_basedir+"data/hg38.chrom.sizes"
-}
 
 assert params.run_mode in ['with_quant', 'pre_quant'] : "ERROR: params.run_mode must be one of: 'with_quant', 'pre_quant'"
 
 
-/// This QC workflow will do the pre-processing in: https://isoseq.how/umi/cli-workflow.html
-workflow fltnc {
-    main:
-      /// Obtaining (sample_id,bam_file) tuples from the input_samples.csv file
-      Channel
-        .fromPath(params.input_samples_path)
-        .splitCsv(sep: ',', header: true)
-        .map { it -> [it.sample_id, it.long_read_path] } // Create a tuple with bam_path and sample_id
-        .set { hifi_bam_tuples }
-
-      /// Every process from now on outputs a (sample_id,bam_file) tuple which is fed on to the next process
-      reads_split           = split_reads(hifi_bam_tuples,params.skera_primers)
-      primer_removed        = remove_primer(reads_split.split_reads_tuple,params.tenx_primers)
-      tagged                = tag_bam(primer_removed.removed_primer_tuple)
-      refined_bam_tuples         = refine_reads(tagged.tagged_tuple,params.tenx_primers,params.min_polya_length)
-      /// refined_bam_stats = postrefine_stats(refined_reads.refined_bam)
-    emit:
-      refined_bam_tuples
+workflow full{
+  BAM_PROCESSING()
+  mapped_reads=BAM_PROCESSING.out.mapped_reads
+  if (params.run_deconvolution == 'TRUE') {
+    DECONVOLUTION(mapped_reads)
+    mapped_reads=DECONVOLUTION.out.fullBam_ch
+  }
+  mapped_reads.view()
+  if (params.run_mode == 'with_quant'){ 
+    ISOQUANT_TWOPASS_PROCESS(mapped_reads)
+  }
 }
 
-
-
-workflow correct_barcodes_process {
-  take:
-    refined_bam_tuples
-  main:
-      //FIX situation with excluding list
-      //def excluded_samples_list = file(params.exclude_samples).exists() ?
-      //  file(params.exclude_samples).text.split('\n').drop(1).collect { it.split(',')[0].trim() } : []
-///      def excluded_samples_list = []
-///      if (params.exclude_samples) {
-///          def exclude_file = file(params.exclude_samples)
-///          if (exclude_file.exists()) {
-///              excluded_samples_list = exclude_file.text.split('\n').drop(1).collect { it.split(',')[0].trim() } : []
-///          } else {
-///            log.warn "Exclusion file ${params.exclude_samples} does not exist. Processing all samples."
-///          }
-///      }
-      //println "Excluded samples: $excluded_samples_list"
-      if (refined_bam_tuples == 'independent workflow'){
-          Channel
-            .fromPath(params.input_samples_path)
-            .splitCsv(sep: ',', header: true)
-            //.filter { it -> !(it.sample_id in excluded_samples_list) }
-            .map { it ->
-              def sample_id = it.sample_id
-              def bam_path = "${params.results_output}qc/refined/${sample_id}.fltnc.bam"
-              [sample_id, bam_path]
-            }
-            .set { refined_bam_tuples }
-      }
-
-      barcode_corrected   = barcode_correction(refined_bam_tuples,params.threeprime_whitelist,params.barcode_correction_method,params.barcode_correction_percentile)
-
-      get_barcodes(barcode_corrected.barcode_corrected_tuple, params.number_of_chunks)
-      
-      barcode_channel=get_barcodes.out.barcodes_tuple.transpose()
-
-      combined_ch = barcode_corrected.barcode_corrected_tuple.combine(barcode_channel, by: 0)
-
-      supset_bam(combined_ch)
-
-      dedup_reads(supset_bam.out.chunk_tuple, params.dedup_batch_size)
-
-      mapped_chunks = pbmm2(dedup_reads.out.dedup_tuple, params.genome_fasta_f)
-
-      mapped_chunks_ch=mapped_chunks.map_tuple.groupTuple()
-
-      mapped_reads=combine_mupped(mapped_chunks_ch)
-      //these three should create combined dedup files and their stats
-      deduped_chunks=dedup_reads.out.dedup_tuple
-      deduped_chunks_ch=deduped_chunks.groupTuple()
-      combine_dedups(deduped_chunks_ch)
-      //combined_dedup_ch=combine_dedups.out.dedup_tuple
-      bam_stats(combine_dedups.out.dedup_tuple, params.barcode_correction_method,params.barcode_correction_percentile)
-
-  emit:
-    mapped_reads
-
+workflow bam_processing_wf {
+    // Independent workflow entry for deconvolution
+    BAM_PROCESSING()
 }
 
-
-workflow correct_barcodes {
-    // Independent workflow entry for isoquant_twopass
+workflow deconvolution_wf {
+    // Independent workflow entry for deconvolution
     input_ch = 'independent workflow'
-    correct_barcodes_process(input_ch)
+    DECONVOLUTION(input_ch)
 }
 
-workflow isoquant_twopass_process {
-
-  take:
-    fullBam_ch
-  main:
-
-    def chromosomes_list = ['chr1', 'chr2', 'chr3', 'chr4', 'chr5', 'chr6', 'chr7', 'chr8', 'chr9',
-                            'chr10', 'chr11', 'chr12', 'chr13', 'chr14', 'chr15', 'chr16', 'chr17',
-                            'chr18', 'chr19', 'chr20', 'chr21', 'chr22', 'chrX', 'chrY','chrM']
-
-    chrom_ch=chroms(chromosomes_list)
-
-    if (fullBam_ch == 'independent workflow'){
-      fullBam_ch=bamsWithExclusion()
-    }
-
-    chrom_genedb_fasta_chr_ch=genedb_perChr_wf(chrom_ch,params.gtf_f,params.genome_fasta_f)
-    preprocessed_bam_perChr_ch=preprocess_bam_perChr_wf(chrom_ch,fullBam_ch)
-
-    //Processing chrM separately
-    preprocessed_bam_perChr_ch.filter{chrom,sample_id,bam,bai -> chrom=="chrM"}.set{preprocessed_bam_chrM_ch}
-    chrom_genedb_fasta_chr_ch.filter{chrom,gene_db,fa,fai -> chrom=="chrM"}.set{chrom_genedb_fasta_chrM_ch}
-    chrM_output_chs=isoquant_chrM(preprocessed_bam_chrM_ch,chrom_genedb_fasta_chrM_ch,chrom_sizes_f)
-
-    //Processing other chromosomes separately
-    preprocessed_bam_perChr_ch.filter{chrom,sample_id,bam,bai -> chrom!="chrM"}.set{preprocessed_bam_nochrM_ch}
-    chrom_genedb_fasta_chr_ch.filter{chrom,gene_db,fa,fai -> chrom!="chrM"}.set{chrom_genedb_fasta_nochrM_ch}
-    nochrM_output_chs=isoquant_twopass_chunked_wf(preprocessed_bam_nochrM_ch,chrom_genedb_fasta_nochrM_ch,chrom_sizes_f,params.chunks)
-
-    //Collecting output: MTX, GTF, reads
-    collect_output_wf(
-    (nochrM_output_chs.isoform_counts).concat(chrM_output_chs.isoform_counts),
-    (nochrM_output_chs.gene_counts).concat(chrM_output_chs.gene_counts),
-    (nochrM_output_chs.existing_gtf).concat(chrM_output_chs.existing_gtf),
-    (nochrM_output_chs.extended_gtf).concat(chrM_output_chs.extended_gtf),
-    (nochrM_output_chs.assignment_reads).concat(chrM_output_chs.assignment_reads),
-    (nochrM_output_chs.transcriptmodel_reads).concat(chrM_output_chs.transcriptmodel_reads),
-    (nochrM_output_chs.corrected_reads).concat(chrM_output_chs.corrected_reads)
-    )
-}
-//FIND where to put these lines after merging
-//  chrom_ch=chroms(chromosomes_list)
-//  ///.filter{chrom -> chrom=='chr2' }
-//  fullBam_ch=bamsWithExclusion()
-//  ///.filter{tpl -> (tpl[0]=='Isogut14548280') || (tpl[0]=='Isogut14548279') || (tpl[0]=='Isogut14548278') || (tpl[0]=='Isogut14548277') || (tpl[0]=='Isogut14548276') || (tpl[0]=='Isogut14548275')}
-//  chrom_genedb_fasta_chr_ch=genedb_perChr_wf(chrom_ch,params.gtf_f,params.genome_fasta_f)
-//  preprocessed_bam_perChr_ch=preprocess_bam_perChr_wf(chrom_ch,fullBam_ch)
-//
-//  //TODO: implement isoquant_twopass_perChr_wf
-//}
-workflow isoquant_twopass {
-    // Independent workflow entry for isoquant_twopass
+workflow isoquant_twopass_wf {
     input_ch = 'independent workflow'
-    isoquant_twopass_process(input_ch)
+    ISOQUANT_TWOPASS_PROCESS(input_ch)
 }
+
+
+///////////////////////////////////////
+//recheck below
+///////////////////////////////////////
+
+
 
 workflow sqanti3 {
-
 
   def input_gtf_f="${params.results_output}results/gtf/transcript_models.gtf"
   sqanti3_qc_ch=SQANTI3_QC(input_gtf_f,params.gtf_f,params.genome_fasta_f,params.polya_f,params.cage_peak_f,params.polya_sites,"/nfs/team152/oe2/isogut/software/SQANTI3-5.3.0/")
@@ -201,7 +76,7 @@ workflow sqanti3 {
   sqanti3_qc_ch.view()
   Channel
   .fromPath("${params.results_output}results/counts/isoform/MTX/*/matrix.mtx")
-  .map{it -> it.parent}
+  .map{path -> path.parent}
   .set{prefiltered_mtx_dir_ch}
   mtx_subset_output_ch=mtx_subset_wf(prefiltered_mtx_dir_ch,sqanti3_filter_ch.map{sqanti3_filter_dir -> "${sqanti3_filter_dir}/transcript_models_inclusion-list.txt"})
   mtx_subset_output_ch.h5ad_file.view()
@@ -211,332 +86,3 @@ workflow sqanti3 {
 
 }
 
-workflow deconvolution{
-  take:
-    mapped_reads
-  main:
-    //FIX situation with excluding list
-    //def excluded_samples_list = file(params.exclude_samples).exists() ?
-    //  file(params.exclude_samples).text.split('\n').drop(1).collect { it.split(',')[0].trim() } : []
-///    def excluded_samples_list = []
-///    if (params.exclude_samples) {
-///        def exclude_file = file(params.exclude_samples)
-///        if (exclude_file.exists()) {
-///            excluded_samples_list = exclude_file.text.split('\n').drop(1).collect { it.split(',')[0].trim() } : []
-///        } else {
-///            log.warn "Exclusion file ${params.exclude_samples} does not exist. Processing all samples."
-///        }
-///    }
-
-    if (mapped_reads == 'independent workflow'){
-    Channel
-      .fromPath(params.input_samples_path)
-      .splitCsv(sep: ',', header: true)
-      //.filter { it -> !(it.sample_id in excluded_samples_list) }
-      .map { it ->
-        def sample_id = it.sample_id
-        def bam_path = "${params.results_output}qc/mapped/${sample_id}.mapped.realcells_only.bam"
-        def bai_path = "${params.results_output}qc/mapped/${sample_id}.mapped.realcells_only.bam.bai"
-        [sample_id, bam_path, bai_path]
-      }
-      .set { mapped_reads }
-    }
-
-    Channel
-      .fromPath(params.input_samples_path)
-      .splitCsv(sep: ',', header: true)
-      .map { it -> [it.sample_id, it.nr_samples_multiplexed] } // Create a tuple with bam_path and sample_id
-      .set { sampleNames_nrDons }
-
-    // Only perform deconvolution on samples that are more than 1 donor.
-    combined_ch_deconv =  mapped_reads.combine(sampleNames_nrDons, by: 0)
-    combined_ch_deconv.filter { experiment, bam, bai, npooled -> npooled == '1' }.map { experiment, bam, bai, _ -> [experiment, bam, bai] }.set{not_for_deconv}
-    combined_ch_deconv.filter { experiment, bam, bai, npooled -> npooled != '1' }.map { experiment, bam, bai, _ -> [experiment, bam, bai] }.set{for_deconv}
-
-    mpileup_out_chanel = mpileup(for_deconv,params.genome_fasta_f)
-    mpileup_out_chanel_subset = subset_vcf(mpileup_out_chanel,params.subset_regions_bed)
-    cellsnp_out = cellsnp(mpileup_out_chanel_subset)
-
-    sampleNames_cellsnp_nrDons = cellsnp_out.combine(sampleNames_nrDons, by: 0)
-    vireo(sampleNames_cellsnp_nrDons)
-    sample_donor_vcf_ch=vireo.out.sample_donor_vcf
-    barcode_channel=vireo.out.barcodes_tuple.transpose()
-    sample_vireo_donor_ids=vireo.out.sample_donor_ids
-    combined_ch = for_deconv.combine(barcode_channel, by: 0)
-    supset_bam_with_bai(combined_ch)
-    fullBam_ch_pre = supset_bam_with_bai.out.per_donor_tuple
-
-    fullBam_ch_pre.mix(not_for_deconv).set{fullBam_ch}
-    
-  emit:
-    fullBam_ch
-    sample_donor_vcf_ch
-    sample_vireo_donor_ids
-
-}
-////gtcheck modify starts
-workflow MATCH_GT_VIREO {
-  take:
-    sample_donor_vcf_ch
-
-  main:
-    Channel.empty().set { ch_versions }
-
-    if (sample_donor_vcf_ch == 'independent workflow'){
-      Channel
-        .fromPath(params.input_samples_path)
-        .splitCsv(sep: ',', header: true)
-        //.filter { it -> !(it.sample_id in excluded_samples_list) }
-        .map { it ->
-          def pool_id = it.sample_id
-          def vcf = "${params.results_output}deconvolution/vireo/vireo__${pool_id}/GT_donors.vireo.vcf.gz"
-          [pool_id, vcf]
-        }
-        .set { sample_donor_vcf_ch }
-    }
-    //sample_donor_vcf_ch.view{ value -> "vireo VCFs channel -> $value" }
-    VIREO_GT_FIX_HEADER(sample_donor_vcf_ch, params.genome_fasta_f)
-    sample_gt_vcf_ch=VIREO_GT_FIX_HEADER.out.gt_pool
-
-    ref_vcf_ch = Channel.fromPath(
-      params.tsv_donor_panel_vcfs,
-      followLinks: true,
-      checkIfExists: true
-    ).splitCsv(header: true, sep: '\t')
-    .map { row -> tuple(row.label, file(row.vcf_file_path), file("${row.vcf_file_path}.csi")) }
-
-    def tsv_entries = file(params.tsv_donor_panel_vcfs).splitCsv(header: true, sep: '\t')
-    def has_multiple_ref_vcfs = tsv_entries.size() > 1
-
-    gt_math_pool_against_panel_input=sample_gt_vcf_ch.combine(ref_vcf_ch)
-      .map { pool_id, vcf, vcf_tbi, ref_label, ref_vcf, ref_csi -> 
-        tuple(pool_id, vcf, vcf_tbi, ref_label, ref_vcf, ref_csi)
-      }
-    //gt_math_pool_against_panel_input.view{ value -> "combined VCFs channel -> $value" }
-
-    // now match genotypes against a panels
-    GT_MATCH_POOL_AGAINST_PANEL(gt_math_pool_against_panel_input)
-    ch_versions = ch_versions.mix(GT_MATCH_POOL_AGAINST_PANEL.out.versions)
-
-    // group by panel id
-    GT_MATCH_POOL_AGAINST_PANEL.out.gtcheck_results.unique()
-      .groupTuple()
-      .set { gt_check_by_panel }
-
-    ASSIGN_DONOR_FROM_PANEL(gt_check_by_panel)
-    ch_versions = ch_versions.mix(ASSIGN_DONOR_FROM_PANEL.out.versions)
-    ASSIGN_DONOR_FROM_PANEL.out.gtcheck_assignments.unique()
-      .groupTuple()
-      .set{ ch_donor_assign_panel }
-
-    assignment_ch=ASSIGN_DONOR_FROM_PANEL.out.gtcheck_assignments
-
-    //if (has_multiple_ref_vcfs){
-    //  ASSIGN_DONOR_OVERALL(ch_donor_assign_panel)
-    //  ch_versions = ch_versions.mix(ASSIGN_DONOR_OVERALL.out.versions)
-    //  assignment_ch=assignment_ch.mix(ASSIGN_DONOR_OVERALL.out.donor_match_table_with_pool_id)
-    //}
-    ASSIGN_DONOR_OVERALL(ch_donor_assign_panel)
-    ch_versions = ch_versions.mix(ASSIGN_DONOR_OVERALL.out.versions)
-    assignment_ch=assignment_ch.mix(ASSIGN_DONOR_OVERALL.out.donor_match_table_with_pool_id)
-
-    COMBINE_ASSIGN(assignment_ch.map { val, path -> path }.collect())
-    ch_versions = ch_versions.mix(COMBINE_ASSIGN.out.versions)
-  emit:
-//    pool_id_donor_assignments_csv = ASSIGN_DONOR_OVERALL.out.donor_assignments
-//    donor_match_table = ASSIGN_DONOR_OVERALL.out.donor_match_table
-//    donor_match_table_with_pool_id = ASSIGN_DONOR_OVERALL.out.donor_match_table_with_pool_id
-    match_gt=COMBINE_ASSIGN.out.gt_match_table
-    versions = ch_versions
-}
-
-workflow MATCH_BARCODE_VIREO {
-  take:
-    sample_donor_vcf_ch
-  main:
-    Channel.empty().set { ch_versions }
-
-    if (sample_donor_vcf_ch == 'independent workflow'){
-      Channel
-        .fromPath(params.input_samples_path)
-        .splitCsv(sep: ',', header: true)
-        //.filter { it -> !(it.sample_id in excluded_samples_list) }
-        .map { it ->
-          def pool_id = it.sample_id
-          def tsv = "${params.results_output}deconvolution/vireo/vireo__${pool_id}/donor_ids.tsv"
-          [pool_id, tsv]
-        }
-        .set { sample_donor_vcf_ch }
-    }
-    //sample_donor_vcf_ch
-    //  .collectFile(name: 'vireo_map.tsv', newLine: true) { sample_id, file_path ->
-    //      "${sample_id}\t${file_path}"
-    //  }
-    //  .set { vireo_map }
-    vireo_map=sample_donor_vcf_ch.map { file -> tuple('vireo_map', file) }
-    MATCH_BARCODES(vireo_map, params.ref_barcode_list, params.min_n_common_barcodes, params.min_common_barcodes_percent)
-  emit:
-    match_barcodes=MATCH_BARCODES.out.match_barcodes
-}
-
-
-workflow COMBINE_DONOR_IDS {
-  take:
-    sample_donor_vcf_ch
-  main:
-    Channel.empty().set { ch_versions }
-
-    if (sample_donor_vcf_ch == 'independent workflow'){
-      Channel
-        .fromPath(params.input_samples_path)
-        .splitCsv(sep: ',', header: true)
-        //.filter { it -> !(it.sample_id in excluded_samples_list) }
-        .map { it ->
-          def pool_id = it.sample_id
-          def tsv = "${params.results_output}deconvolution/vireo/vireo__${pool_id}/donor_ids.tsv"
-          [pool_id, tsv]
-        }
-        .set { sample_donor_vcf_ch }
-      sample_donor_vcf_ch
-        .collectFile(name: 'vireo_map.tsv', newLine: true) { sample_id, file_path ->
-            "${sample_id}\t${file_path}"
-        }
-        .set { vireo_map }
-      //vireo_map=vireo_map.map { file -> tuple('vireo_map', file) }
-      ch_optional = channel.fromList(
-        [
-          "${params.results_output}deconvolution/sample_assignment/barcode_match/combined_barcode_donor_assignments.csv",
-          "${params.results_output}deconvolution/sample_assignment/gtmatch/combined_gt_donor_assignments_overall.csv"
-        ].collect { v -> file(v) }
-        .findAll { v -> v.exists() }
-      )
-      sample_donor_vcf_ch = vireo_map.mix(ch_optional).collect()
-    }
-
-    COMBINE_DONOR_ASIGNMENTS(sample_donor_vcf_ch)
-}
-
-workflow SPLIT_BAMS {
-  take:
-    pool_donor_ids_ch
-    mapped_bam_ch
-  main:
-    // Handle 'independent workflow' case - check if it's a value channel with that string
-    if (pool_donor_ids_ch == 'independent workflow') {
-      //assignment_file_ch = channel.fromPath("${params.results_output}deconvolution/sample_assignment/donor_assignment.csv")
-
-      pool_donor_ids_ch=channel.fromPath(params.input_samples_path)
-        .splitCsv(sep: ',', header: true)
-        //.filter { it -> !(it.sample_id in excluded_samples_list) }
-        .map { it ->
-          def pool_id = it.sample_id
-          def tsv = "${params.results_output}deconvolution/vireo/vireo__${pool_id}/donor_ids.tsv"
-          [pool_id, tsv]
-        }
-    }
-    if (mapped_bam_ch == 'independent workflow') {
-      mapped_bam_ch =channel.fromPath(params.input_samples_path)
-        .splitCsv(sep: ',', header: true)
-        //.filter { it -> !(it.sample_id in excluded_samples_list) }
-        .map { it ->
-          def pool_id = it.sample_id
-          def bam = "${params.results_output}qc/mapped/${pool_id}.mapped.realcells_only.bam"
-          def bai = "${params.results_output}qc/mapped/${pool_id}.mapped.realcells_only.bam.bai"
-          [pool_id, bam, bai]
-        }
-      
-    }
-
-    //This portion was done to do manual assignments but we decided that we are going to use automatic vireo names
-    // Use parentheses around conditions
-    //if (params.manual_assignment_file != null) {
-    //  REPLACE_DONOR_ASIGNMENTS(assignment_file_ch, params.manual_assignment_file)
-    //  assignment_file_ch = REPLACE_DONOR_ASIGNMENTS.out.asignments
-    //}
-    
-    //if (params.remove_assignment_file != null) {
-    //  REMOVE_DONOR_ASIGNMENTS(assignment_file_ch, params.remove_assignment_file)
-    //  assignment_file_ch = REMOVE_DONOR_ASIGNMENTS.out.asignments
-    //}
-    
-    // Use def for variable declarations
-    //def valid_donors = assignment_file_ch
-    //  .splitCsv(header: true)
-    //  .map { row -> tuple(row.pool, row.donor) }
-      //.toList()
-    
-    //combined_ch = valid_donors.combine(pool_donor_ids_ch, by: 0)
-    GET_BARCODES(pool_donor_ids_ch)
-    //barcode_lists=GET_BARCODES.out.barcode_lists.flatMap { val, paths ->
-    //  paths.collect { p -> tuple(val, p) }
-    //}
-    barcode_lists=GET_BARCODES.out.barcode_list
-    bam_ch = mapped_bam_ch.combine(barcode_lists, by: 0)
-    bam_ch.view()
-    SPLIT_BAM(bam_ch)
-    donor_bams = SPLIT_BAM.out.donor_bams.flatMap { val, paths ->
-      paths.collect { p -> tuple(p.simpleName, p) } }
-    INDEX_SPLIT_BAM(donor_bams)
-  emit:
-    bam_files=INDEX_SPLIT_BAM.out.donor_bams
-}
-
-workflow splitbam_wf {
-    // Independent workflow entry for deconvolution
-    input_ch = 'independent workflow'
-    SPLIT_BAMS(input_ch, input_ch)
-//    valid_donors=SPLIT_BAMS.out.valid_donors
-}
-
-workflow gt_match_wf {
-    // Independent workflow entry for deconvolution
-    input_ch = 'independent workflow'
-    MATCH_GT_VIREO(input_ch)
-}
-////gtcheck modify ends 
-workflow barcode_match_wf {
-    // Independent workflow entry for deconvolution
-    input_ch = 'independent workflow'
-    MATCH_BARCODE_VIREO(input_ch)
-}
-
-workflow assignment_wf {
-    // Independent workflow entry for deconvolution
-    input_ch = 'independent workflow'
-    COMBINE_DONOR_IDS(input_ch)
-}
-
-workflow deconvolutionwf {
-    // Independent workflow entry for deconvolution
-    input_ch = 'independent workflow'
-    deconvolution(input_ch)
-}
-
-workflow full{
-  fltnc()
-  correct_barcodes_process(fltnc.out.refined_bam_tuples)
-  deconvolution(correct_barcodes_process.out.mapped_reads)
-
-  vireo_donor_ids=deconvolution.out.sample_vireo_donor_ids
-  vireo_donor_ids.collectFile(name: 'vireo_map.tsv', newLine: true) { sample_id, file_path ->
-        "${sample_id}\t${file_path}"
-    }
-    .set { vireo_map }
-  vireo_map2=vireo_map
-  ////gtcheck modify starts
-  if (params.run_gtcheck == 'TRUE'){ 
-    MATCH_GT_VIREO(deconvolution.out.sample_donor_vcf_ch)
-    vireo_map2=vireo_map2.mix(MATCH_GT_VIREO.out.match_gt)
-  }
-  if (params.run_barcode_check == 'TRUE'){ 
-    MATCH_BARCODE_VIREO(vireo_map)
-    vireo_map2=vireo_map2.mix(MATCH_BARCODE_VIREO.out.match_barcodes)
-  }
-  vireo_map2 = vireo_map2.collect()
-  COMBINE_DONOR_IDS(vireo_map2)
-  ////gtcheck modify endss
-  if (params.run_mode == 'with_quant'){ 
-    isoquant_twopass_process(deconvolution.out.fullBam_ch)
-  }
-  SPLIT_BAMS(vireo_donor_ids, correct_barcodes_process.out.mapped_reads)
-}
