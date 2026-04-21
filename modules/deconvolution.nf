@@ -1,7 +1,7 @@
 
 
-process mpileup {
-    label 'deduplication'
+process MPILEUP {
+    label 'mpileup'
     publishDir "${params.results_output}deconvolution/mpileup", mode: 'copy'
 
     input:
@@ -22,8 +22,8 @@ process mpileup {
     """
 }
 
-process subset_vcf {
-    label 'deconvolution'
+process SUBSET_VCF {
+    label 'subset_vcf'
     publishDir "${params.results_output}deconvolution/mpileup", mode: 'copy'
 
     input:
@@ -39,7 +39,7 @@ process subset_vcf {
     """
 }
 
-process cellsnp {
+process CELLSNP {
     label 'cellsnp'
     container "/software/hgi/containers/yascp/yascp.cog.sanger.ac.uk-public-yascp_qc_jan_2025.sif"
     publishDir "${params.results_output}deconvolution/cellsnp", mode: 'copy'
@@ -67,7 +67,7 @@ process cellsnp {
 
 
 
-process vireo {
+process VIREO {
     label 'deconvolution'
 
     container "/software/hgi/containers/yascp/yascp.cog.sanger.ac.uk-public-yascp_qc_jan_2025.sif"
@@ -79,6 +79,7 @@ process vireo {
         tuple val(sample_id),path(cellsnp),val(nr_samples)
     output:
         tuple val(sample_id), path("barcodes__*.tsv"), emit: barcodes_tuple
+        tuple val(sample_id), path("${sample_id}.bc_list.txt.gz"), emit: barcode_list
         path("vireo__${sample_id}"), emit: vireo_results
         tuple val(sample_id), path("vireo__${sample_id}/GT_donors.vireo.vcf.gz"), emit: sample_donor_vcf//, path("vireo__${sample_id}/GT_donors.vireo.vcf.gz.csi"), emit: sample_donor_vcf
         tuple val(sample_id), path("vireo__${sample_id}/donor_ids.tsv"), emit: sample_donor_ids
@@ -96,6 +97,8 @@ process vireo {
 
         #Split the donor barcodes in an independent files for next step of bam splits.
         awk 'NR > 1 && \$2 != "unassigned" && \$2 != "doublet" {print > ("barcodes__" \$2 ".tsv")}' vireo__${sample_id}/donor_ids.tsv
+        cat barcodes__*.tsv | awk -F'\t' -v prefix="${sample_id}_" 'BEGIN {OFS="\t"} NF >= 2 {print \$1, prefix\$2}' > ${sample_id}.bc_list.txt
+        gzip ${sample_id}.bc_list.txt
     """
 }
 

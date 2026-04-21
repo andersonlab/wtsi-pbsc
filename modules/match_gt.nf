@@ -178,7 +178,7 @@ process ASSIGN_DONOR_OVERALL
 {
   // decide final donor assignment across different panels from per-panel donor assignments
   tag "${pool_id}"
-
+  label 'gtcheck_processing'
   publishDir  path: "${params.results_output}deconvolution/sample_assignment/gtmatch/${pool_id}",
           pattern: "*.csv",
           mode: 'copy',
@@ -221,7 +221,7 @@ process COMBINE_ASSIGN
 {
   // decide final donor assignment across different panels from per-panel donor assignments
   tag "${pool_id}"
-
+  label 'gtcheck_processing'
   publishDir  path: "${params.results_output}deconvolution/sample_assignment/gtmatch",
           pattern: "combined_*.csv",
           mode: 'copy',

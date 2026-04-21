@@ -1,4 +1,4 @@
-process split_reads {
+process SPLIT_READS {
 
     label 'split_reads'
 
@@ -25,7 +25,7 @@ process split_reads {
     """
 }
 
-process remove_primer {
+process REMOVE_PRIMER {
     label 'remove_primer'
 
     publishDir "${params.results_output}qc/lima_reports", mode: 'copy', pattern: "*.lima.summary"
@@ -51,7 +51,7 @@ process remove_primer {
 
 }
 
-process tag_bam {
+process TAG_BAM {
     label 'tag_bam'
 
     input:
@@ -72,7 +72,7 @@ process tag_bam {
 
 }
 
-process refine_reads {
+process REFINE_READS {
     label 'refine_reads'
 
     publishDir "${params.results_output}qc/refined", mode: 'copy'
@@ -84,7 +84,7 @@ process refine_reads {
       val min_polya_length
 
     output:
-      tuple(val(sample_id), path("${sample_id}.fltnc.bam"))
+      tuple val(sample_id), path("${sample_id}.fltnc.bam"), emit: refined_reads
 
     script:
     """

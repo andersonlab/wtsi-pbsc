@@ -1,4 +1,4 @@
-process barcode_correction {
+process BARCODE_CORRECTION {
     label 'barcodes'
     publishDir "${params.results_output}qc/correct", mode: 'copy'
 
@@ -43,7 +43,7 @@ process barcode_correction {
 
 }
 
-process get_barcodes {
+process GET_BARCODES {
     label 'process_low'
     
     input:
@@ -64,7 +64,7 @@ process get_barcodes {
 }
 
 
-process supset_bam {
+process SUPSET_BAM {
     label 'supset_bam'
        
     input:
@@ -83,7 +83,7 @@ process supset_bam {
         """
 
 }
-
+//DELETE supset_bam_with_bai
 process supset_bam_with_bai {
     label 'supset_bam'
        
@@ -104,7 +104,7 @@ process supset_bam_with_bai {
 
 }
 
-process dedup_reads {
+process DEDUP_READS {
     label 'deduplication'
 
     input:
@@ -123,7 +123,7 @@ process dedup_reads {
 }
 
 
-process combine_dedups {
+process COMBINE_DEDUPS {
     label 'combine_bams'
     publishDir "${params.results_output}qc/dedup", mode: 'copy'
 
@@ -143,7 +143,7 @@ process combine_dedups {
     """
 }
 
-process combine_mupped {
+process COMBINE_MUPPED {
     label 'combine_bams'
     publishDir "${params.results_output}qc/mapped", mode: 'copy'
 
@@ -152,7 +152,7 @@ process combine_mupped {
 
 
     output:
-        tuple val(sample_id), path("${sample_id}.mapped.realcells_only.bam"), path("${sample_id}.mapped.realcells_only.bam.bai"), emit: dedup_tuple
+        tuple val(sample_id), path("${sample_id}.mapped.realcells_only.bam"), path("${sample_id}.mapped.realcells_only.bam.bai"), emit: combined_bam_tuple
 
     script:
     """
@@ -163,7 +163,7 @@ process combine_mupped {
 }
 
 
-process bam_stats {
+process BAM_STATS {
     label 'bam_stats'
     publishDir "${params.results_output}qc/dedup", mode: 'copy'
 
