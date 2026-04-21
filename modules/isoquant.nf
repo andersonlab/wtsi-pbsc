@@ -174,7 +174,7 @@ process run_isoquant_chunked {
 
     script:
     """
-    isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${bams.join(' ')} --labels ${sample_ids.join(' ')} --data_type pacbio_ccs -o ${programmaticRegion} -p ${programmaticRegion} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --clean_start
+    isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${bams.join(' ')} --labels ${sample_ids.join(' ')} --data_type pacbio_ccs -o ${programmaticRegion} -p ${programmaticRegion} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --clean_start --polya_trimmed all
 
 
     """
@@ -199,50 +199,50 @@ process replace_novel_names {
 
     transcriptgenefix_file_suffixes=(\\
     .discovered_gene_counts.tsv  \\
-    .discovered_gene_grouped_counts.features.tsv \\
-    .discovered_gene_grouped_counts.linear.tsv \\
-    .discovered_gene_grouped_tpm.features.tsv \\
+    .discovered_gene_grouped_tag_CB_counts.features.tsv \\
+    .discovered_gene_grouped_tag_CB_counts.linear.tsv \\
+    .discovered_gene_grouped_tag_CB_tpm.features.tsv \\
     .discovered_gene_tpm.tsv \\
     .discovered_transcript_counts.tsv \\
-    .discovered_transcript_grouped_counts.features.tsv \\
-    .discovered_transcript_grouped_counts.linear.tsv \\
-    .discovered_transcript_grouped_tpm.features.tsv \\
+    .discovered_transcript_grouped_tag_CB_counts.features.tsv \\
+    .discovered_transcript_grouped_tag_CB_counts.linear.tsv \\
+    .discovered_transcript_grouped_tag_CB_tpm.features.tsv \\
     .discovered_transcript_tpm.tsv \\
     .gene_counts.tsv \\
-    .gene_grouped_counts.features.tsv \\
-    .gene_grouped_counts.linear.tsv \\
-    .gene_grouped_tpm.features.tsv \\
+    .gene_grouped_tag_CB_counts.features.tsv \\
+    .gene_grouped_tag_CB_counts.linear.tsv \\
+    .gene_grouped_tag_CB_tpm.features.tsv \\
     .novel_vs_known.SQANTI-like.tsv \\
     .transcript_model_reads.tsv.gz \\
     .transcript_models.gtf \\
     .extended_annotation.gtf \\
     .transcript_counts.tsv \\
-    .transcript_grouped_counts.features.tsv \\
-    .transcript_grouped_counts.linear.tsv  \\
-    .transcript_grouped_tpm.features.tsv \\
+    .transcript_grouped_tag_CB_counts.features.tsv \\
+    .transcript_grouped_tag_CB_counts.linear.tsv  \\
+    .transcript_grouped_tag_CB_tpm.features.tsv \\
     )
 
     asis_file_suffixes=(\\
-    .intron_grouped_counts.linear.tsv  \\
+    .intron_grouped_tag_CB_counts.linear.tsv  \\
     .intron_counts.tsv \\
     .exon_counts.tsv \\
-    .exon_grouped_counts.linear.tsv \\
-    .discovered_gene_grouped_counts.matrix.mtx \\
-    .discovered_gene_grouped_tpm.matrix.mtx \\
-    .discovered_transcript_grouped_counts.matrix.mtx \\
-    .discovered_transcript_grouped_tpm.matrix.mtx \\
-    .gene_grouped_counts.matrix.mtx \\
-    .gene_grouped_tpm.matrix.mtx \\
-    .transcript_grouped_counts.matrix.mtx \\
-    .transcript_grouped_tpm.matrix.mtx \\
-    .transcript_grouped_tpm.barcodes.tsv \\
-    .transcript_grouped_counts.barcodes.tsv \\
-    .gene_grouped_tpm.barcodes.tsv \\
-    .gene_grouped_counts.barcodes.tsv \\
-    .discovered_transcript_grouped_tpm.barcodes.tsv \\
-    .discovered_transcript_grouped_counts.barcodes.tsv \\
-    .discovered_gene_grouped_tpm.barcodes.tsv \\
-    .discovered_gene_grouped_counts.barcodes.tsv \\
+    .exon_grouped_tag_CB_counts.linear.tsv \\
+    .discovered_gene_grouped_tag_CB_counts.matrix.mtx \\
+    .discovered_gene_grouped_tag_CB_tpm.matrix.mtx \\
+    .discovered_transcript_grouped_tag_CB_counts.matrix.mtx \\
+    .discovered_transcript_grouped_tag_CB_tpm.matrix.mtx \\
+    .gene_grouped_tag_CB_counts.matrix.mtx \\
+    .gene_grouped_tag_CB_tpm.matrix.mtx \\
+    .transcript_grouped_tag_CB_counts.matrix.mtx \\
+    .transcript_grouped_tag_CB_tpm.matrix.mtx \\
+    .transcript_grouped_tag_CB_tpm.barcodes.tsv \\
+    .transcript_grouped_tag_CB_counts.barcodes.tsv \\
+    .gene_grouped_tag_CB_tpm.barcodes.tsv \\
+    .gene_grouped_tag_CB_counts.barcodes.tsv \\
+    .discovered_transcript_grouped_tag_CB_tpm.barcodes.tsv \\
+    .discovered_transcript_grouped_tag_CB_counts.barcodes.tsv \\
+    .discovered_gene_grouped_tag_CB_tpm.barcodes.tsv \\
+    .discovered_gene_grouped_tag_CB_counts.barcodes.tsv \\
     .read_assignments.tsv.gz \\
     .corrected_reads.bed.gz \\
     .transcript_tpm.tsv \\
@@ -291,19 +291,25 @@ process replace_novel_names {
     output_suffix_noknown=.discovered_transcript_counts.noknown.tsv
     output_f_withknown="\${output_dir}${programmaticRegion}\${output_suffix_withknown}"
     output_f_noknown="\${output_dir}${programmaticRegion}\${output_suffix_noknown}"
-    grep -v -e "^ENST" -e "__ambiguous" -e "__no_feature" -e "__not_aligned" \${output_f_withknown} > \${output_f_noknown}
+    if [[ -e "\${output_f_withknown}" ]]; then
+      grep -v -e "^ENST" -e "__ambiguous" -e "__no_feature" -e "__not_aligned" \${output_f_withknown} > \${output_f_noknown}
+    fi
 
-    output_suffix_withknown=.discovered_transcript_grouped_counts.linear.tsv
-    output_suffix_noknown=.discovered_transcript_grouped_counts.linear.noknwn.tsv
+    output_suffix_withknown=.discovered_transcript_grouped_tag_CB_counts.linear.tsv
+    output_suffix_noknown=.discovered_transcript_grouped_tag_CB_counts.linear.noknwn.tsv
     output_f_withknown="\${output_dir}${programmaticRegion}\${output_suffix_withknown}"
     output_f_noknown="\${output_dir}${programmaticRegion}\${output_suffix_noknown}"
-    grep -v -e "^ENST" -e "__ambiguous" -e "__no_feature" -e "__not_aligned" \${output_f_withknown} > \${output_f_noknown}
+    if [[ -e "\${output_f_withknown}" ]]; then
+      grep -v -e "^ENST" -e "__ambiguous" -e "__no_feature" -e "__not_aligned" \${output_f_withknown} > \${output_f_noknown}
+    fi
 
-    output_suffix_withknown=.discovered_transcript_grouped_counts.linear.tsv
-    output_suffix_noknown=.discovered_transcript_grouped_counts.linear.noknown.tsv
+    output_suffix_withknown=.discovered_transcript_grouped_tag_CB_counts.linear.tsv
+    output_suffix_noknown=.discovered_transcript_grouped_tag_CB_counts.linear.noknown.tsv
     output_f_withknown="\${output_dir}${programmaticRegion}\${output_suffix_withknown}"
     output_f_noknown="\${output_dir}${programmaticRegion}\${output_suffix_noknown}"
-    grep -v -e "^ENST" -e "__ambiguous" -e "__no_feature" -e "__not_aligned" \${output_f_withknown} > \${output_f_noknown}
+    if [[ -e "\${output_f_withknown}" ]]; then
+      grep -v -e "^ENST" -e "__ambiguous" -e "__no_feature" -e "__not_aligned" \${output_f_withknown} > \${output_f_noknown}
+    fi
     """
 }
 
@@ -484,7 +490,7 @@ label 'isoquant_firstPass'
 
   script:
   """
-  isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${bam} --labels ${sample_id} --data_type pacbio_ccs -o ${sample_id} -p ${sample_id}.${chrom} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --debug --no_model_construction
+  isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${bam} --labels ${sample_id} --data_type pacbio_ccs -o ${sample_id} -p ${sample_id}.${chrom} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --debug --no_model_construction --polya_trimmed all
   """
 }
 ////////////////////
@@ -499,7 +505,7 @@ label 'isoquant_firstPass_withmodelconstruction'
       tuple val(chrom), val(sample_id), path("${sample_id}/"),path("${sample_id}/${sample_id}.${chrom}/${sample_id}.${chrom}.read_assignments.tsv.gz"), path(bam)
   script:
   """
-  isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${bam} --labels ${sample_id} --data_type pacbio_ccs -o ${sample_id} -p ${sample_id}.${chrom} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --debug
+  isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${bam} --labels ${sample_id} --data_type pacbio_ccs -o ${sample_id} -p ${sample_id}.${chrom} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --debug --polya_trimmed all
   """
 }
 
@@ -522,50 +528,50 @@ process replace_novel_names_firsPass_singlenovelname {
 
     transcriptgenefix_file_suffixes=(\\
     .discovered_gene_counts.tsv  \\
-    .discovered_gene_grouped_counts.features.tsv \\
-    .discovered_gene_grouped_counts.linear.tsv \\
-    .discovered_gene_grouped_tpm.features.tsv \\
+    .discovered_gene_grouped_tag_CB_counts.features.tsv \\
+    .discovered_gene_grouped_tag_CB_counts.linear.tsv \\
+    .discovered_gene_grouped_tag_CB_tpm.features.tsv \\
     .discovered_gene_tpm.tsv \\
     .discovered_transcript_counts.tsv \\
-    .discovered_transcript_grouped_counts.features.tsv \\
-    .discovered_transcript_grouped_counts.linear.tsv \\
-    .discovered_transcript_grouped_tpm.features.tsv \\
+    .discovered_transcript_grouped_tag_CB_counts.features.tsv \\
+    .discovered_transcript_grouped_tag_CB_counts.linear.tsv \\
+    .discovered_transcript_grouped_tag_CB_tpm.features.tsv \\
     .discovered_transcript_tpm.tsv \\
     .gene_counts.tsv \\
-    .gene_grouped_counts.features.tsv \\
-    .gene_grouped_counts.linear.tsv \\
-    .gene_grouped_tpm.features.tsv \\
+    .gene_grouped_tag_CB_counts.features.tsv \\
+    .gene_grouped_tag_CB_counts.linear.tsv \\
+    .gene_grouped_tag_CB_tpm.features.tsv \\
     .novel_vs_known.SQANTI-like.tsv \\
     .transcript_model_reads.tsv.gz \\
     .transcript_models.gtf \\
     .extended_annotation.gtf \\
     .transcript_counts.tsv \\
-    .transcript_grouped_counts.features.tsv \\
-    .transcript_grouped_counts.linear.tsv  \\
-    .transcript_grouped_tpm.features.tsv \\
+    .transcript_grouped_tag_CB_counts.features.tsv \\
+    .transcript_grouped_tag_CB_counts.linear.tsv  \\
+    .transcript_grouped_tag_CB_tpm.features.tsv \\
     )
 
     asis_file_suffixes=(\\
-    .intron_grouped_counts.linear.tsv  \\
+    .intron_grouped_tag_CB_counts.linear.tsv  \\
     .intron_counts.tsv \\
     .exon_counts.tsv \\
-    .exon_grouped_counts.linear.tsv \\
-    .discovered_gene_grouped_counts.matrix.mtx \\
-    .discovered_gene_grouped_tpm.matrix.mtx \\
-    .discovered_transcript_grouped_counts.matrix.mtx \\
-    .discovered_transcript_grouped_tpm.matrix.mtx \\
-    .gene_grouped_counts.matrix.mtx \\
-    .gene_grouped_tpm.matrix.mtx \\
-    .transcript_grouped_counts.matrix.mtx \\
-    .transcript_grouped_tpm.matrix.mtx \\
-    .transcript_grouped_tpm.barcodes.tsv \\
-    .transcript_grouped_counts.barcodes.tsv \\
-    .gene_grouped_tpm.barcodes.tsv \\
-    .gene_grouped_counts.barcodes.tsv \\
-    .discovered_transcript_grouped_tpm.barcodes.tsv \\
-    .discovered_transcript_grouped_counts.barcodes.tsv \\
-    .discovered_gene_grouped_tpm.barcodes.tsv \\
-    .discovered_gene_grouped_counts.barcodes.tsv \\
+    .exon_grouped_tag_CB_counts.linear.tsv \\
+    .discovered_gene_grouped_tag_CB_counts.matrix.mtx \\
+    .discovered_gene_grouped_tag_CB_tpm.matrix.mtx \\
+    .discovered_transcript_grouped_tag_CB_counts.matrix.mtx \\
+    .discovered_transcript_grouped_tag_CB_tpm.matrix.mtx \\
+    .gene_grouped_tag_CB_counts.matrix.mtx \\
+    .gene_grouped_tag_CB_tpm.matrix.mtx \\
+    .transcript_grouped_tag_CB_counts.matrix.mtx \\
+    .transcript_grouped_tag_CB_tpm.matrix.mtx \\
+    .transcript_grouped_tag_CB_tpm.barcodes.tsv \\
+    .transcript_grouped_tag_CB_counts.barcodes.tsv \\
+    .gene_grouped_tag_CB_tpm.barcodes.tsv \\
+    .gene_grouped_tag_CB_counts.barcodes.tsv \\
+    .discovered_transcript_grouped_tag_CB_tpm.barcodes.tsv \\
+    .discovered_transcript_grouped_tag_CB_counts.barcodes.tsv \\
+    .discovered_gene_grouped_tag_CB_tpm.barcodes.tsv \\
+    .discovered_gene_grouped_tag_CB_counts.barcodes.tsv \\
     .read_assignments.tsv.gz \\
     .corrected_reads.bed.gz \\
     .transcript_tpm.tsv \\
@@ -613,7 +619,9 @@ process replace_novel_names_firsPass_singlenovelname {
     output_suffix_noknown=.discovered_transcript_counts.noknown.tsv
     output_f_withknown="\${output_dir}${sample_id}.${chrom}\${output_suffix_withknown}"
     output_f_noknown="\${output_dir}${sample_id}.${chrom}\${output_suffix_noknown}"
-    grep -v -e "__ambiguous" -e "__no_feature" -e "__not_aligned" \${output_f_withknown} > \${output_f_noknown}
+    if [[ -e "\${output_f_withknown}" ]]; then
+      grep -v -e "__ambiguous" -e "__no_feature" -e "__not_aligned" \${output_f_withknown} > \${output_f_noknown}
+    fi
     """
 }
 /////////////////////////////

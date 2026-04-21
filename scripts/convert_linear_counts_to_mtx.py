@@ -6,7 +6,7 @@ def create_mtx(isoquant_counts_dat):
 
 
     #Extracting feature index
-    features_dat=isoquant_counts_dat['#feature_id'].drop_duplicates().reset_index(drop=True).reset_index().rename(columns={'index':'feature_idx'})
+    features_dat=isoquant_counts_dat['feature_id'].drop_duplicates().reset_index(drop=True).reset_index().rename(columns={'index':'feature_idx'})
     features_dat['feature_idx']=features_dat['feature_idx']+1
     print('Generated genes index...')
 
@@ -18,7 +18,7 @@ def create_mtx(isoquant_counts_dat):
 
 
     #Creating Full mtx dataframe
-    full_mtx=(isoquant_counts_dat.merge(features_dat,on='#feature_id',how='left').merge(groups_dat,on='group_id',how='left')).loc[:,['feature_idx','group_idx','count']]
+    full_mtx=(isoquant_counts_dat.merge(features_dat,on='feature_id',how='left').merge(groups_dat,on='group_id',how='left')).loc[:,['feature_idx','group_idx','count']]
     #Removing 0s to create sparse
     full_mtx=full_mtx.loc[full_mtx['count']!=0,:]
     print('Filtered out 0 counts...')
@@ -52,7 +52,7 @@ def write_mtx_dat(full_mtx,features_dat,groups_dat,output_dir,output_prefix):
         print('wrote matrix.mtx file...')
 
         #genes.tsv file
-        features_dat[1]=features_dat['#feature_id']
+        features_dat[1]=features_dat['feature_id']
         features_dat.to_csv(output_dir+output_prefix+'genes.tsv',sep='\t',header=False,index=False)
         print('wrote genes.tsv file...')
 

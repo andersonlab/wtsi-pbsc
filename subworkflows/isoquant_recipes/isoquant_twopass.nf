@@ -74,11 +74,11 @@ workflow collect_exon_intron_coutns_perChr_wf {
 
     isoquant_firstpass_output_ch
     ///.filter{tpl -> (tpl[0]=='chr2') && (tpl[1]=='Isogut15045390') }
-    .map{chrom,sample_id,isoquant_output_dir,read_assignments_f,processed_bam -> [chrom,"${sample_id}.${chrom}.intron_grouped_counts","${isoquant_output_dir}/${sample_id}.${chrom}/${sample_id}.${chrom}.intron_grouped_counts.tsv"]} | format_intron_grouped_counts_firstPass_perChr | set{firstPass_intron_grouped_formatted_ch}
+    .map{chrom,sample_id,isoquant_output_dir,read_assignments_f,processed_bam -> [chrom,"${sample_id}.${chrom}.intron_grouped_counts","${isoquant_output_dir}/${sample_id}.${chrom}/${sample_id}.${chrom}.intron_grouped_tag_CB_counts.tsv"]} | format_intron_grouped_counts_firstPass_perChr | set{firstPass_intron_grouped_formatted_ch}
 
     isoquant_output_novel_names_ch
     ///.filter{tpl -> tpl[1]=='chr2_137822130_165323855'}
-    .map{chrom,programmaticRegion,isoquant_output_dir -> [chrom,"${programmaticRegion}.intron_grouped_counts","${isoquant_output_dir}/${programmaticRegion}.intron_grouped_counts.tsv"]} | format_intron_grouped_counts_secondPass_perChr | set{secondPass_intron_grouped_formatted_ch}
+    .map{chrom,programmaticRegion,isoquant_output_dir -> [chrom,"${programmaticRegion}.intron_grouped_counts","${isoquant_output_dir}/${programmaticRegion}.intron_grouped_tag_CB_counts.tsv"]} | format_intron_grouped_counts_secondPass_perChr | set{secondPass_intron_grouped_formatted_ch}
 
     firstPass_intron_grouped_formatted_ch
         .combine(bam_nums_perChr_ch,by:0)
@@ -121,11 +121,11 @@ workflow collect_exon_intron_coutns_perChr_wf {
 
         isoquant_firstpass_output_ch
         ///.filter{tpl -> (tpl[0]=='chr2') && (tpl[1]=='Isogut15045390') }
-        .map{chrom,sample_id,isoquant_output_dir,read_assignments_f,processed_bam -> [chrom,"${sample_id}.${chrom}.exon_grouped_counts","${isoquant_output_dir}/${sample_id}.${chrom}/${sample_id}.${chrom}.exon_grouped_counts.tsv"]} | format_exon_grouped_counts_firstPass_perChr | set{firstPass_exon_grouped_formatted_ch}
+        .map{chrom,sample_id,isoquant_output_dir,read_assignments_f,processed_bam -> [chrom,"${sample_id}.${chrom}.exon_grouped_counts","${isoquant_output_dir}/${sample_id}.${chrom}/${sample_id}.${chrom}.exon_grouped_tag_CB_counts.tsv"]} | format_exon_grouped_counts_firstPass_perChr | set{firstPass_exon_grouped_formatted_ch}
 
         isoquant_output_novel_names_ch
         ///.filter{tpl -> tpl[1]=='chr2_137822130_165323855'}
-        .map{chrom,programmaticRegion,isoquant_output_dir -> [chrom,"${programmaticRegion}.exon_grouped_counts","${isoquant_output_dir}/${programmaticRegion}.exon_grouped_counts.tsv"]} | format_exon_grouped_counts_secondPass_perChr | set{secondPass_exon_grouped_formatted_ch}
+        .map{chrom,programmaticRegion,isoquant_output_dir -> [chrom,"${programmaticRegion}.exon_grouped_counts","${isoquant_output_dir}/${programmaticRegion}.exon_grouped_tag_CB_counts.tsv"]} | format_exon_grouped_counts_secondPass_perChr | set{secondPass_exon_grouped_formatted_ch}
 
 
         firstPass_exon_grouped_formatted_ch
@@ -199,8 +199,8 @@ workflow isoquant_chrM {
     //////////////////B-OUTPUT CHANNELs/////////////////////////
     ////////////////////////////////////////////////////////////
     //Setting up output channel for: counts, GTF, reads
-    isoquant_output_novel_names_ch.map{chrom,sample_id,isoquant_output_dir -> [chrom,"${isoquant_output_dir}/${sample_id}.${chrom}.discovered_transcript_grouped_counts.linear.tsv"]}.groupTuple(by:0).set{output_isoform_counts_ch}
-    isoquant_output_novel_names_ch.map{chrom,sample_id,isoquant_output_dir -> [chrom,"${isoquant_output_dir}/${sample_id}.${chrom}.discovered_gene_grouped_counts.linear.tsv"]}.groupTuple(by:0).set{output_gene_counts_ch}
+    isoquant_output_novel_names_ch.map{chrom,sample_id,isoquant_output_dir -> [chrom,"${isoquant_output_dir}/${sample_id}.${chrom}.discovered_transcript_grouped_tag_CB_counts.linear.tsv"]}.groupTuple(by:0).set{output_isoform_counts_ch}
+    isoquant_output_novel_names_ch.map{chrom,sample_id,isoquant_output_dir -> [chrom,"${isoquant_output_dir}/${sample_id}.${chrom}.discovered_gene_grouped_tag_CB_counts.linear.tsv"]}.groupTuple(by:0).set{output_gene_counts_ch}
     isoquant_output_novel_names_ch.map{chrom,sample_id,isoquant_output_dir -> [chrom,"${isoquant_output_dir}/${sample_id}.${chrom}.transcript_models.gtf"]}.groupTuple(by:0).set{output_existing_gtf_ch}
     isoquant_output_novel_names_ch.map{chrom,sample_id,isoquant_output_dir -> [chrom,"${isoquant_output_dir}/${sample_id}.${chrom}.extended_annotation.gtf"]}.groupTuple(by:0).set{output_extended_gtf_ch}
     isoquant_output_novel_names_ch.map{chrom,sample_id,isoquant_output_dir -> [chrom,"${isoquant_output_dir}/${sample_id}.${chrom}.corrected_reads.bed.gz"]}.groupTuple(by:0).set{output_corrected_reads_ch}
@@ -370,10 +370,10 @@ workflow isoquant_twopass_chunked_wf {
 
     //Combining transcript-level counts channels from first and second passes 
     isoquant_firstpass_output_ch.combine(bam_nums_perChr_ch,by:0)
-    .map{chrom,sample_id,isoquant_output_dir,read_assignment_f,bam_f,bam_num -> [groupKey(chrom,bam_num),"${isoquant_output_dir}/${sample_id}.${chrom}/${sample_id}.${chrom}.transcript_grouped_counts.linear.tsv"]}
+    .map{chrom,sample_id,isoquant_output_dir,read_assignment_f,bam_f,bam_num -> [groupKey(chrom,bam_num),"${isoquant_output_dir}/${sample_id}.${chrom}/${sample_id}.${chrom}.transcript_grouped_tag_CB_counts.linear.tsv"]}
     .groupTuple(by:0)
     .combine(
-      isoquant_output_novel_names_ch.map{chrom,programmaticRegion,isoquant_output_dir -> [groupKey(chrom,chunks),"${isoquant_output_dir}/${programmaticRegion}.discovered_transcript_grouped_counts.linear.noknown.tsv"]}.groupTuple(by:0),
+      isoquant_output_novel_names_ch.map{chrom,programmaticRegion,isoquant_output_dir -> [groupKey(chrom,chunks),"${isoquant_output_dir}/${programmaticRegion}.discovered_transcript_grouped_tag_CB_counts.linear.noknown.tsv"]}.groupTuple(by:0),
       by:0
     )
     .map{chrom,firstPass,secondPass -> [chrom,firstPass+secondPass]}
@@ -381,10 +381,10 @@ workflow isoquant_twopass_chunked_wf {
 
     //Combining gene-level counts channels from first and second passes
     isoquant_firstpass_output_ch.combine(bam_nums_perChr_ch,by:0)
-    .map{chrom,sample_id,isoquant_output_dir,read_assignment_f,bam_f,bam_num -> [groupKey(chrom,bam_num),"${isoquant_output_dir}/${sample_id}.${chrom}/${sample_id}.${chrom}.gene_grouped_counts.linear.tsv"]}
+    .map{chrom,sample_id,isoquant_output_dir,read_assignment_f,bam_f,bam_num -> [groupKey(chrom,bam_num),"${isoquant_output_dir}/${sample_id}.${chrom}/${sample_id}.${chrom}.gene_grouped_tag_CB_counts.linear.tsv"]}
     .groupTuple(by:0)
     .combine(
-      isoquant_output_novel_names_ch.map{chrom,programmaticRegion,isoquant_output_dir -> [groupKey(chrom,chunks),"${isoquant_output_dir}/${programmaticRegion}.discovered_gene_grouped_counts.linear.tsv"]}.groupTuple(by:0),
+      isoquant_output_novel_names_ch.map{chrom,programmaticRegion,isoquant_output_dir -> [groupKey(chrom,chunks),"${isoquant_output_dir}/${programmaticRegion}.discovered_gene_grouped_tag_CB_counts.linear.tsv"]}.groupTuple(by:0),
       by:0
     )
     .map{chrom,firstPass,secondPass -> [chrom,firstPass+secondPass]}
