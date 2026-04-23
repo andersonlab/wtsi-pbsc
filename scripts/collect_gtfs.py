@@ -1,3 +1,8 @@
+import pyranges as pr
+import pandas as pd
+import argparse
+import os
+
 def is_valid_gtf(file_path):
     """Check if the GTF file contains non-comment lines."""
     if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
@@ -7,99 +12,82 @@ def is_valid_gtf(file_path):
             if not line.startswith("#"):  # Check for at least one non-comment line
                 return True
     return False
-def process_ref_db(ref_db_f,ref_gtf_f):
-    ref_db=[]
-    if ref_db_f is not None:
-        ref_db=[gffutils.FeatureDB(ref_db_f,keep_order=True)]
-    else:
-        if ref_gtf_f is not None:
-            ref_db=create_feature_db_from_gtf([ref_gtf_f])
-    return(ref_db)
-def create_feature_db_from_gtf(query_gtf_fs):
-    query_dbs=[]
+def load_ref_gtf(ref_gtf_f):
+    if ref_gtf_f is None:
+        return []
+    if not is_valid_gtf(ref_gtf_f):
+        print('WARNING: Skipping empty reference GTF:', ref_gtf_f)
+        return []
+    df = pr.read_gtf(ref_gtf_f, as_df=True)
+    print('Loaded reference GTF: {0}'.format(ref_gtf_f))
+    return [df]
+def load_gtfs(query_gtf_fs):
+    dfs = []
     for query_gtf_f in query_gtf_fs:
         if is_valid_gtf(query_gtf_f):
-            query_db = gffutils.create_db(
-                query_gtf_f, dbfn=":memory:", force=True, keep_order=True,
-                disable_infer_transcripts=True, disable_infer_genes=True
-            )
-            query_dbs.append(query_db)
-            print('DB created for {0}'.format(query_gtf_f))
+            df = pr.read_gtf(query_gtf_f, as_df=True)
+            dfs.append(df)
+            print('Loaded {0}'.format(query_gtf_f))
         else:
             print('WARNING: Skipping empty GTF file:', query_gtf_f)
+    return dfs
 
 
-    return(query_dbs)
+def recount_gene_transcripts(df):
+    counts = (
+        df[df['Feature'] == 'transcript']
+        .groupby('gene_id')['transcript_id']
+        .nunique()
+        .rename('transcript_count')
+    )
+    df = df.merge(counts, on='gene_id', how='left')
+    mask = df['Feature'] == 'gene'
+    df.loc[mask, 'transcripts'] = df.loc[mask, 'transcript_count'].astype(str)
+    df = df.drop(columns='transcript_count')
+    return df
 
-def clean_record_attributes(record):
-    cleaned_record_attributes = {k: v for k, v in record.attributes.items() if v and v[0] != ""}
-    for att in cleaned_record_attributes:
+def merge_dfs(dfs):
+    combined = pd.concat(dfs, ignore_index=True)
 
-        formatted_record_atts=[ att_val.replace(';', '').replace('"', '') for att_val in cleaned_record_attributes[att] ]
-        cleaned_record_attributes[att]=formatted_record_atts
-    return(cleaned_record_attributes)
+    # deduplicate genes: keep first occurrence of each gene_id
+    gene_rows = combined[combined['Feature'] == 'gene'].drop_duplicates(subset='gene_id', keep='first')
 
-def recount_gene_transcripts(gene_dict):
-    for gene_id in gene_dict.keys():
-        gene_dict[gene_id]['gene'].attributes['transcripts']=[str(len(gene_dict[gene_id]['transcripts']))]
-    return(gene_dict)
+    # deduplicate transcripts: first occurrence of each transcript_id (transcript row) wins
+    kept_transcript_ids = (
+        combined[combined['Feature'] == 'transcript']
+        .drop_duplicates(subset='transcript_id', keep='first')['transcript_id']
+    )
 
-def merge_dbs(query_dbs):
-    gene_dict={}
-    for i,query_db in enumerate(query_dbs):
-        print("Processing {x}st DB...".format(x=i+1))
+    # keep all non-gene rows (transcript + exons + CDS etc.) for kept transcript_ids only
+    non_gene_rows = combined[combined['Feature'] != 'gene']
+    non_gene_rows = non_gene_rows[non_gene_rows['transcript_id'].isin(kept_transcript_ids)]
 
-        for j,gene in enumerate(query_db.features_of_type("gene")):
-            gene_id = gene.attributes.get("gene_id")[0]
+    return pd.concat([gene_rows, non_gene_rows], ignore_index=True)
 
-            if gene_id is not None:
-                if gene_id not in gene_dict:
-                    gene.attributes=clean_record_attributes(gene)
-                    gene_dict[gene_id] = {"gene":gene,"transcripts": {}}
+GTF_FIXED_COLS = {'Chromosome', 'Source', 'Feature', 'Start', 'End', 'Score', 'Strand', 'Frame'}
+FEATURE_ORDER = {'gene': 0, 'transcript': 1}
 
-                # Add children (transcripts, exons, CDS, etc.)
-                for transcript in query_db.children(gene,featuretype="transcript"):
-                    transcript_id=transcript.attributes.get("transcript_id")[0]
+def format_gtf_output(df):
+    df = df.copy()
+    df['_feat_order'] = df['Feature'].map(FEATURE_ORDER).fillna(2).astype(int)
+    df = df.sort_values(['gene_id', '_feat_order', 'transcript_id', 'Start'])
+    df = df.drop(columns='_feat_order')
 
-                    if transcript_id in gene_dict[gene_id]['transcripts'].keys():
-                        print('WARNING: duplicate transcript {0}. Used first instance'.format(transcript_id))
-                        continue
-                    transcript.attributes=clean_record_attributes(transcript)
-                    for child in query_db.children(transcript):
-                        child.attributes=clean_record_attributes(child)
-                        if child.featuretype != 'transcript':
-                            if transcript_id in gene_dict[gene_id]['transcripts'].keys():
-                                gene_dict[gene_id]['transcripts'][transcript_id]['children'].append(child)
-                            else:
-                                gene_dict[gene_id]['transcripts'][transcript_id]={'transcript':transcript,'children':[child]}
-
-    gene_dict=recount_gene_transcripts(gene_dict)
-
-    return(gene_dict)
-
-def format_gtf_output(gene_dict):
-    output_str=""
-    for gene,info in gene_dict.items():
-        output_str+=str(info['gene']).rstrip(';')+";\n"
-        for transcript,transcript_info in info['transcripts'].items():
-            output_str+=str(transcript_info['transcript']).rstrip(';')+";\n"
-            for child in transcript_info['children']:
-                output_str+=str(child).rstrip(';')+";\n"
-    return(output_str)
-
-#TODO: enable subsetting of reference
-def subset_db(db,transcript_subset):
-    pass
-
-
-
-
-import gffutils
-import pandas as pd
-import argparse
-import os
-
-
+    attr_cols = [c for c in df.columns if c not in GTF_FIXED_COLS]
+    lines = []
+    for _, row in df.iterrows():
+        attrs = ' '.join(
+            '{0} "{1}";'.format(k, row[k])
+            for k in attr_cols
+            if pd.notna(row[k]) and row[k] != ''
+        )
+        lines.append('\t'.join([
+            str(row['Chromosome']), str(row['Source']), str(row['Feature']),
+            str(int(row['Start']) + 1), str(int(row['End'])),
+            str(row['Score']), str(row['Strand']), str(row['Frame']),
+            attrs
+        ]))
+    return '\n'.join(lines) + '\n'
 
 
 
@@ -137,14 +125,6 @@ def main():
         help="Reference GTF file"
     )
     parser.add_argument(
-        "-R", "--ref_db_file",
-        dest="ref_db_f",
-        required=False,
-        default=None,
-        help="Reference DB file"
-    )
-
-    parser.add_argument(
         "-S", "--select_transcripts_f",
         dest="select_transcripts_f",
         required=False,
@@ -173,49 +153,35 @@ def main():
         print("Query FOFN:",args.query_gtf_fofn)
     if args.ref_gtf_f is not None:
         print("Reference GTF file:", args.ref_gtf_f)
-    if args.ref_db_f is not None:
-        print("Reference DB file:", args.ref_db_f)
     if args.select_transcripts_f is not None:
         print("Select reference transcripts file:", args.select_transcripts_f)
     if args.select_transcripts_list is not None:
         print("Select reference transcripts list:", ', '.join(args.select_transcripts_list))
 
 
-    query_gtf_fs=args.query_gtf_fs
-    query_gtf_fofn=args.query_gtf_fofn
-    output_gtf_f=args.output_gtf_f
-    ref_gtf_f=args.ref_gtf_f
-    ref_db_f=args.ref_db_f
-    select_transcripts_f=args.select_transcripts_f
-    select_transcripts_list=args.select_transcripts_list
+    query_gtf_fs = args.query_gtf_fs
+    query_gtf_fofn = args.query_gtf_fofn
+    output_gtf_f = args.output_gtf_f
+    ref_gtf_f = args.ref_gtf_f
+    select_transcripts_f = args.select_transcripts_f
+    select_transcripts_list = args.select_transcripts_list
 
+    ref_given = ref_gtf_f is not None
+    subset_given = (select_transcripts_f is not None) or (select_transcripts_list is not None)
+    query_given = (query_gtf_fs is not None) or (query_gtf_fofn is not None)
 
-
-
-    #Composite arguments
-    ref_given=(ref_gtf_f is not None) or (ref_db_f is not None)
-    subset_given=(select_transcripts_f is not None) or (select_transcripts_list is not None)
-    query_given=(query_gtf_fs is not None) or (query_gtf_fofn is not None)
-    ######
-    #Based on the combination of arguments, you should use different steps. Here as a prototype, we do a full union of all databases (ref+query)
-    #####
     if not query_given:
         raise ValueError('Query not given either as list or FOFN')
-    if query_given and (query_gtf_fs is None):
-        query_gtf_fs=pd.read_csv(query_gtf_fofn,sep='\t',header=None)
-        query_gtf_fs=query_gtf_fs[0].tolist()
+    if query_gtf_fs is None:
+        query_gtf_fs = pd.read_csv(query_gtf_fofn, sep='\t', header=None)[0].tolist()
 
+    query_dfs = load_gtfs(query_gtf_fs)
+    ref_dfs = load_ref_gtf(ref_gtf_f) if ref_given and not subset_given else []
 
-    process_ref_db(ref_db_f,ref_gtf_f)
-    query_dbs=create_feature_db_from_gtf(query_gtf_fs)
-    #Based on the combination of arguments, you should use different steps. Here as a prototype, we do a full union of all databases (ref+query)
-    if ref_given and not subset_given:
-        query_dbs=process_ref_db(ref_db_f,ref_gtf_f)+query_dbs
-
-    #Merging, formatting and writing. Shouldn't depend on strategy and only base on gene_dict
-    merged_gene_dict=merge_dbs(query_dbs)
-    output_str=format_gtf_output(merged_gene_dict)
-    with open(output_gtf_f, "w") as out_f:
+    merged_df = merge_dfs(ref_dfs + query_dfs)
+    merged_df = recount_gene_transcripts(merged_df)
+    output_str = format_gtf_output(merged_df)
+    with open(output_gtf_f, 'w') as out_f:
         out_f.write(output_str)
 
 
@@ -223,4 +189,5 @@ if __name__=='__main__':
     main()
 
 
-#USAGE: python collect_gtfs.py -q /lustre/scratch126/humgen/projects/isogut/workdirs/isoquant_twopass/8e/0438868efe618be3643e238ebba8ec/chr12_99988580_106538194/chr12_99988580_106538194_renamed/chr12_99988580_106538194.transcript_models.gtf /lustre/scratch126/humgen/projects/isogut/workdirs/isoquant_twopass/42/df19e313a1f8128fab2349f5d28005/chr8_129706194_142880609/chr8_129706194_142880609_renamed/chr8_129706194_142880609.transcript_models.gtf -R /lustre/scratch126/humgen/projects/isogut/utils/gencode.v46.annotation.sorted.gtf.db  -o merge.gtf
+#USAGE: python collect_gtfs.py -q file1.gtf file2.gtf -r gencode.v48.annotation.sorted.gtf -o merge.gtf
+#USAGE: python collect_gtfs.py -Q gtf_files.txt -r gencode.v48.annotation.sorted.gtf -o merge.gtf
