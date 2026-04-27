@@ -46,6 +46,15 @@ def recount_gene_transcripts(df):
     df = df.drop(columns='transcript_count')
     return df
 
+def backfill_gene_name(df):
+    gene_names = (
+        df[df['Feature'] == 'gene'][['gene_id', 'gene_name']]
+        .drop_duplicates('gene_id')
+        .dropna(subset=['gene_name'])
+    )
+    df = df.drop(columns=['gene_name'], errors='ignore')
+    return df.merge(gene_names, on='gene_id', how='left')
+
 def merge_dfs(dfs):
     combined = pd.concat(dfs, ignore_index=True)
 
@@ -179,6 +188,7 @@ def main():
     ref_dfs = load_ref_gtf(ref_gtf_f) if ref_given and not subset_given else []
 
     merged_df = merge_dfs(ref_dfs + query_dfs)
+    merged_df = backfill_gene_name(merged_df)
     merged_df = recount_gene_transcripts(merged_df)
     output_str = format_gtf_output(merged_df)
     with open(output_gtf_f, 'w') as out_f:
