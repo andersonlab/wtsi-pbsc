@@ -7,6 +7,7 @@ include {SQANTI3_QC; SQANTI3_FILTER} from './modules/sqanti3.nf'
 include {BAM_PROCESSING} from './subworkflows/bam_processing/bam_processing.nf'
 include {DECONVOLUTION} from './subworkflows/deconvolution/deconvolution.nf'
 include {ISOQUANT_TWOPASS_PROCESS} from './subworkflows/isoquant_recipes/isoquant_twopass_process.nf'
+include {PFAM_ANNOTATION_WF} from './subworkflows/pfam_annotation/pfam_annotation.nf'
 
 include {mtx_subset_wf} from './subworkflows/core/mtx_subset.nf'
 
@@ -60,6 +61,11 @@ workflow isoquant_twopass_wf {
     ISOQUANT_TWOPASS_PROCESS(input_ch)
 }
 
+workflow pfam_annotation_wf {
+    input_ch = 'independent workflow'
+    PFAM_ANNOTATION_WF(input_ch)
+}
+
 
 ///////////////////////////////////////
 //recheck below
@@ -70,15 +76,13 @@ workflow isoquant_twopass_wf {
 workflow sqanti3 {
 
   def input_gtf_f="${params.results_output}results/gtf/transcript_models.gtf"
-  sqanti3_qc_ch=SQANTI3_QC(input_gtf_f,params.gtf_f,params.genome_fasta_f,params.polya_f,params.cage_peak_f,params.polya_sites,"/nfs/team152/oe2/isogut/software/SQANTI3-5.3.0/")
-  sqanti3_filter_ch=SQANTI3_FILTER(sqanti3_qc_ch.map{output_dir -> "${output_dir}/transcript_models_classification.txt"},input_gtf_f,params.sqanti3_path)
-
-  sqanti3_qc_ch.view()
+  SQANTI3_QC(input_gtf_f,params.gtf_f,params.genome_fasta_f,params.polya_f,params.cage_peak_f,params.polya_sites)
+  SQANTI3_FILTER(SQANTI3_QC.out.classification, SQANTI3_QC.out.corrected_gtf, SQANTI3_QC.out.corrected_fasta, params.sqanti_filter_json)
   Channel
   .fromPath("${params.results_output}results/counts/isoform/MTX/*/matrix.mtx")
   .map{path -> path.parent}
   .set{prefiltered_mtx_dir_ch}
-  mtx_subset_output_ch=mtx_subset_wf(prefiltered_mtx_dir_ch,sqanti3_filter_ch.map{sqanti3_filter_dir -> "${sqanti3_filter_dir}/transcript_models_inclusion-list.txt"})
+  mtx_subset_output_ch=mtx_subset_wf(prefiltered_mtx_dir_ch, SQANTI3_FILTER.out.pass_isoforms)
   mtx_subset_output_ch.h5ad_file.view()
 
 ///  customPublishFilteredH5ADIsoform(mtx_subset_output_ch.h5ad_file,"${params.results_output}results/counts_sqanti3/isoform/H5AD/")

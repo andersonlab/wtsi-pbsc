@@ -1,0 +1,53 @@
+{
+    "full-splice_match": [
+        {
+            "subcategory": "reference_match"
+        },
+        {
+            "subcategory": ["3prime_fragment", "5prime_fragment", "internal_fragment", "mono-exon"],
+            "perc_A_downstream_TTS": [0, 69]
+        }
+    ],
+    "rest": [
+        {
+            "RTS_stage": "FALSE", "perc_A_downstream_TTS": [0, 69], "exons": 2,
+            "dist_to_CAGE_peak": [-500, 500], "within_polyA_site": "TRUE"
+        },
+        {
+            "RTS_stage": "FALSE", "perc_A_downstream_TTS": [0, 69], "exons": 2,
+            "dist_to_CAGE_peak": [-500, 500], "dist_to_polyA_site": [-50, 50]
+        },
+        {
+            "RTS_stage": "FALSE", "perc_A_downstream_TTS": [0, 69], "exons": 2,
+            "dist_to_CAGE_peak": [-500, 500], "polyA_motif_found": "TRUE"
+        },
+        {
+            "RTS_stage": "FALSE", "perc_A_downstream_TTS": [0, 69], "exons": 2,
+            "within_CAGE_peak": "TRUE", "within_polyA_site": "TRUE"
+        },
+        {
+            "RTS_stage": "FALSE", "perc_A_downstream_TTS": [0, 69], "exons": 2,
+            "within_CAGE_peak": "TRUE", "dist_to_polyA_site": [-50, 50]
+        },
+        {
+            "RTS_stage": "FALSE", "perc_A_downstream_TTS": [0, 69], "exons": 2,
+            "within_CAGE_peak": "TRUE", "polyA_motif_found": "TRUE"
+        },
+        {
+            "RTS_stage": "FALSE", "perc_A_downstream_TTS": [0, 69], "exons": 2,
+            "diff_to_gene_TSS": [-250, 250], "within_polyA_site": "TRUE"
+        },
+        {
+            "RTS_stage": "FALSE", "perc_A_downstream_TTS": [0, 69], "exons": 2,
+            "diff_to_gene_TSS": [-250, 250], "dist_to_polyA_site": [-50, 50]
+        },
+        {
+            "RTS_stage": "FALSE", "perc_A_downstream_TTS": [0, 69], "exons": 2,
+            "diff_to_gene_TSS": [-250, 250], "polyA_motif_found": "TRUE"
+        },
+        {
+            "RTS_stage": "FALSE", "perc_A_downstream_TTS": [0, 69], "exons": 2,
+            "coding": "coding"
+        }
+    ]
+}

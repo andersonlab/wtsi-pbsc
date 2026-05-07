@@ -6,14 +6,14 @@ import argparse
 
 def mtx_subset(mtx_dat,genes_dat,barcodes_dat,subset_list):
     mtx_dat=mtx_dat.rename(columns={0:'feature_idx',1:'barcode_idx',2:'count'})
-    genes_dat=genes_dat.loc[:,[0]].reset_index().rename(columns={'index':'feature_idx',0:'#feature_id'})
+    genes_dat=genes_dat.loc[:,[0]].reset_index().rename(columns={'index':'feature_idx',0:'feature_id'})
     genes_dat['feature_idx']=genes_dat['feature_idx']+1
 
     barcodes_dat=barcodes_dat.loc[:,[0]].reset_index().rename(columns={'index':'barcode_idx',0:'group_id'})
     barcodes_dat['barcode_idx']=barcodes_dat['barcode_idx']+1
     full_mtx_dat=mtx_dat.merge(genes_dat,how='left',on='feature_idx').merge(barcodes_dat,how='left',on='barcode_idx')
 
-    n_na_features=full_mtx_dat.loc[full_mtx_dat['#feature_id'].isna(),:].shape[0]
+    n_na_features=full_mtx_dat.loc[full_mtx_dat['feature_id'].isna(),:].shape[0]
     n_na_barcodes=full_mtx_dat.loc[full_mtx_dat['group_id'].isna(),:].shape[0]
     print("Number of features in matrix.mtx with no matching id in genes.tsv: {n}".format(n=n_na_features))
     print("Number of barcodes in matrix.mtx with no matching id in barcodes.tsv: {n}".format(n=n_na_barcodes))
@@ -22,7 +22,7 @@ def mtx_subset(mtx_dat,genes_dat,barcodes_dat,subset_list):
         raise ValueError('There are non-matching features between MTX and genes.tsv')
     if n_na_barcodes > 0:
         raise ValueError('There are non-matching barcodes between MTX and barcodes.tsv')
-    full_mtx_dat=full_mtx_dat.loc[full_mtx_dat['#feature_id'].isin(subset_list),:]
+    full_mtx_dat=full_mtx_dat.loc[full_mtx_dat['feature_id'].isin(subset_list),:]
     new_mtx_dat,new_genes_dat,new_barcodes_dat=create_mtx(full_mtx_dat.drop(columns=['feature_idx','barcode_idx']) )
     return [new_mtx_dat,new_genes_dat,new_barcodes_dat]
 

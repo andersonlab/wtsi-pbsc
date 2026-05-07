@@ -1,5 +1,5 @@
 process SQANTI3_QC {
-    label 'big_job'
+    label 'sqanti3'
 
     publishDir "${params.results_output}results/transcript_info/sqanti3/", mode: 'copy', overwrite: true
 
@@ -10,37 +10,46 @@ process SQANTI3_QC {
       path(polya_f)
       path(cage_peak_f)
       path(polya_sites)
-      val(sqanti3_path)
 
     output:
-      path("sqanti3_qc")
-
+      path("sqanti3_qc"),                                        emit: qc_dir
+      path("sqanti3_qc/transcript_models_classification.txt"),   emit: classification
+      path("sqanti3_qc/transcript_models_corrected.gtf"),        emit: corrected_gtf
+      path("sqanti3_qc/transcript_models_corrected.fasta"),      emit: corrected_fasta
 
     script:
       """
-      python ${sqanti3_path}sqanti3_qc.py ${input_gtf_f} ${ref_gtf_f} ${genome_fasta_f} --polyA_motif_list ${polya_f} --CAGE_peak ${cage_peak_f} --report both -t ${task.cpus} --polyA_peak ${polya_sites} -d sqanti3_qc/ --force_id_ignore
+        /conda/miniconda3/envs/sqanti3/bin/python /opt2/sqanti3/6.0.1/SQANTI3-6.0.1/sqanti3_qc.py \
+              --isoforms ${input_gtf_f} --refGTF ${ref_gtf_f} --refFasta ${genome_fasta_f} \
+              --polyA_motif_list ${polya_f} --CAGE_peak ${cage_peak_f} \
+              --report pdf -n ${task.cpus} --polyA_peak ${polya_sites} \
+              -d sqanti3_qc/ --include_ORF --output transcript_models
       """
 
 }
 
 process SQANTI3_FILTER {
-  label 'mini_job'
+  label 'sqanti3_filter'
 
   publishDir "${params.results_output}results/transcript_info/sqanti3/", mode: 'copy', overwrite: true
 
   input:
     path(classification_f)
-    path(input_gtf_f)
-    val(sqanti3_path)
+    path(corrected_gtf_f)
+    path(corrected_fasta)
+    path(sqanti_filter_json)
   output:
-    path("sqanti3_filter")
+    path("sqanti3_filter"),                                         emit: filter_dir
+    path("sqanti3_filter/transcript_models_pass_isoforms.txt"),             emit: pass_isoforms
+    path("sqanti3_filter/*.filtered.gtf"),                          emit: filtered_gtf
   script:
+  def prefix = classification_f.baseName.replace("_classification", "")
   """
-  python ${sqanti3_path}sqanti3_filter.py rules ${classification_f} -d sqanti3_filter/ -e
-  python ${baseDir}/scripts/create_genedb.py -g ${input_gtf_f} -o sqanti3_filter/${input_gtf_f}.db
-  python ${baseDir}/scripts/db_subset.py -d sqanti3_filter/${input_gtf_f}.db -i sqanti3_filter/${input_gtf_f.baseName}_inclusion-list.txt -o sqanti3_filter/${input_gtf_f.baseName}.filtered.gtf
-  python ${baseDir}/scripts/create_genedb.py -g sqanti3_filter/${input_gtf_f.baseName}.filtered.gtf -o sqanti3_filter/${input_gtf_f.baseName}.filtered.gtf.db
-
+  /conda/miniconda3/envs/sqanti3/bin/python /opt2/sqanti3/6.0.1/SQANTI3-6.0.1/sqanti3_filter.py rules  --sqanti_class ${classification_f} \
+      -j ${sqanti_filter_json} -d sqanti3_filter/ --filter_gtf ${corrected_gtf_f} --filter_faa ${corrected_fasta} --cpus ${task.cpus} --skip_report 
+  /conda/miniconda3/envs/sqanti3/bin/python ${baseDir}/scripts/create_genedb.py -g ${corrected_gtf_f} -o sqanti3_filter/${corrected_gtf_f}.db
+  /conda/miniconda3/envs/sqanti3/bin/python ${baseDir}/scripts/db_subset.py -d sqanti3_filter/${corrected_gtf_f}.db -i sqanti3_filter/transcript_models_pass_isoforms.txt -o sqanti3_filter/${prefix}.filtered.gtf
+  /conda/miniconda3/envs/sqanti3/bin/python ${baseDir}/scripts/create_genedb.py -g sqanti3_filter/${prefix}.filtered.gtf -o sqanti3_filter/${prefix}.filtered.gtf.db
   """
 
 }
