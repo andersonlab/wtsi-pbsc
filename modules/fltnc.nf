@@ -2,7 +2,7 @@ process SPLIT_READS {
 
     label 'split_reads'
 
-    publishDir "${params.results_output}qc/skera_reports", mode: 'copy', pattern: '*.segmented.summary.json, *.segmented.summary.csv, *.segmented.read_lengths.csv'
+    publishDir "${params.results_output}qc/skera_reports", mode: 'copy', pattern: '*.segmented.summary.json, *.segmented.read_lengths.csv, *.segmented.summary.csv'
 
     input:
 	   tuple val(sample_id), path(input_bam)
@@ -75,7 +75,7 @@ process TAG_BAM {
 process REFINE_READS {
     label 'refine_reads'
 
-    publishDir "${params.results_output}qc/refined", mode: 'copy'
+    publishDir "${params.results_output}qc/refined", mode: 'copy', pattern: '*.fltnc.consensusreadset.xml, *.fltnc.filter_summary.report.json, *.fltnc.report.csv'
 
 
     input:
@@ -85,6 +85,9 @@ process REFINE_READS {
 
     output:
       tuple val(sample_id), path("${sample_id}.fltnc.bam"), emit: refined_reads
+      path "${sample_id}.fltnc.consensusreadset.xml"
+      path "${sample_id}.fltnc.filter_summary.report.json"
+      path "${sample_id}.fltnc.report.csv"
 
     script:
     """
