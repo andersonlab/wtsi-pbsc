@@ -1,6 +1,6 @@
 process BARCODE_CORRECTION {
     label 'barcodes'
-    publishDir "${params.results_output}qc/correct", mode: 'copy'
+    publishDir "${params.results_output}qc/correct", mode: 'copy', pattern: '*.json, *.corrected.sorted.tsv'
 
     input:
         tuple val(sample_id), path(refined_reads_bam)
