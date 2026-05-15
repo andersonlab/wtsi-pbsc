@@ -171,15 +171,21 @@ process BAM_STATS {
         tuple val(sample_id), path(dedup_bam), path("${sample_id}.dedup.bam.bai")
         val barcode_correction_method
         val barcode_correction_percentile
+        val min_umi_barcodes  // optional: pass null to skip barcode filtering
 
 
     output:
-        //tuple val(sample_id), path(dedup_bam), path("${sample_id}.dedup.bam.bai")
         path "*.dedup.json"
         path "*.dedup.tsv"
+        path "${sample_id}.min_umi_barcodes.txt", optional: true, emit: min_umi_barcodes_txt
 
 
     script:
+    def filter_cmd = (min_umi_barcodes != null) ? """
+awk 'NR==1{ for(i=1;i<=NF;i++) { if(\$i=="#BarcodeSequence") bc=i; if(\$i=="NumberOfReads") nr=i } } \
+     NR>1 && \$nr+0 >= ${min_umi_barcodes} { print \$bc }' \
+     ${sample_id}.dedup.tsv > ${sample_id}.min_umi_barcodes.txt
+""" : ""
     """
     if [[ "${barcode_correction_method}" == "percentile" ]]; then
       isoseq bcstats  -j ${task.cpus} --method ${barcode_correction_method} --percentile ${barcode_correction_percentile} --json ${sample_id}.dedup.json -o ${sample_id}.dedup.tsv ${sample_id}.dedup.bam
@@ -188,8 +194,9 @@ process BAM_STATS {
     else
         echo "Invalid barcode correction method: ${barcode_correction_method}" >&2
         exit 1
-    fi;
+    fi
 
+    ${filter_cmd}
     """
 }
 
