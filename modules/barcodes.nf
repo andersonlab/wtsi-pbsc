@@ -156,7 +156,7 @@ process COMBINE_MUPPED {
 
     script:
     """
- 	samtools merge -f ${sample_id}.mapped.realcells_only.merged.bam ${mapped_bam_chunks.join(' ')}
+ 	samtools merge -@ ${task.cpus} -f ${sample_id}.mapped.realcells_only.merged.bam ${mapped_bam_chunks.join(' ')}
     samtools sort -@ ${task.cpus} -o ${sample_id}.mapped.realcells_only.bam ${sample_id}.mapped.realcells_only.merged.bam
     samtools index -@ ${task.cpus} ${sample_id}.mapped.realcells_only.bam
     """
@@ -177,7 +177,7 @@ process BAM_STATS {
     output:
         path "*.dedup.json"
         path "*.dedup.tsv"
-        path "${sample_id}.min_umi_barcodes.txt", optional: true, emit: min_umi_barcodes_txt
+        tuple val(sample_id), path("${sample_id}.min_umi_barcodes.txt"), optional: true, emit: min_umi_barcodes_txt
 
 
     script:
