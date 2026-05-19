@@ -3,6 +3,71 @@ include {BARCODE_CORRECTION; GET_BARCODES; SUPSET_BAM; DEDUP_READS; COMBINE_DEDU
 
 include { PBMM2 } from '../../modules/pbmm2.nf'
 
+workflow DEDUP_ONLY {
+    main:
+        // Load sample IDs from the sample sheet and point to published corrected BAMs
+        Channel
+            .fromPath(params.input_samples_path)
+            .splitCsv(sep: ',', header: true)
+            .map { it -> [it.sample_id, file("${params.results_output}qc/correct/${it.sample_id}.corrected.sorted.bam")] }
+            .set { corrected_bam_ch }
+
+        GET_BARCODES(corrected_bam_ch, params.number_of_chunks)
+        barcode_channel = GET_BARCODES.out.barcodes_tuple.transpose()
+        combined_ch = corrected_bam_ch.combine(barcode_channel, by: 0)
+        SUPSET_BAM(combined_ch)
+        DEDUP_READS(SUPSET_BAM.out.chunk_tuple, params.dedup_batch_size)
+
+        deduped_chunks_ch = DEDUP_READS.out.dedup_tuple.groupTuple()
+        COMBINE_DEDUPS(deduped_chunks_ch)
+        BAM_STATS(COMBINE_DEDUPS.out.dedup_tuple, params.barcode_correction_method, params.barcode_correction_percentile, params.min_umi_barcodes ?: null)
+
+    emit:
+        dedup_reads = COMBINE_DEDUPS.out.dedup_tuple
+}
+
+
+workflow MAPPING_ONLY {
+    main:
+        // Load sample IDs from the sample sheet and point to published dedup BAMs
+        Channel
+            .fromPath(params.input_samples_path)
+            .splitCsv(sep: ',', header: true)
+            .map { it -> [it.sample_id, file("${params.results_output}qc/dedup/${it.sample_id}.dedup.bam")] }
+            .set { dedup_bam_ch }
+
+        dedup_bam_with_bai_ch = dedup_bam_ch
+            .map { sid, bam -> [sid, bam, file("${bam}.bai")] }
+
+        BAM_STATS(dedup_bam_with_bai_ch, params.barcode_correction_method, params.barcode_correction_percentile, params.min_umi_barcodes ?: null)
+
+        // Re-split combined dedup BAMs into chunks for parallel mapping
+        GET_BARCODES(dedup_bam_ch, params.number_of_chunks)
+        barcode_channel = GET_BARCODES.out.barcodes_tuple.transpose()
+        combined_ch = dedup_bam_ch.combine(barcode_channel, by: 0)
+        SUPSET_BAM(combined_ch)
+
+        // Map chunks — dedup already done, so go straight to PBMM2
+        if (params.min_umi_barcodes) {
+            pbmm2_ch = SUPSET_BAM.out.chunk_tuple
+                .combine(BAM_STATS.out.min_umi_barcodes_txt, by: 0)
+                .multiMap { sid, bam, bc ->
+                    bam_tuple: tuple(sid, bam)
+                    barcodes:  bc
+                }
+            PBMM2(pbmm2_ch.bam_tuple, params.genome_fasta_f, pbmm2_ch.barcodes)
+        } else {
+            PBMM2(SUPSET_BAM.out.chunk_tuple, params.genome_fasta_f, [])
+        }
+
+        mapped_chunks_ch = PBMM2.out.map_tuple.groupTuple()
+        COMBINE_MUPPED(mapped_chunks_ch)
+
+    emit:
+        mapped_reads = COMBINE_MUPPED.out.combined_bam_tuple
+}
+
+
 workflow BAM_PROCESSING {
     main:
       /// Obtaining (sample_id,bam_file) tuples from the input_samples.csv file
@@ -28,9 +93,21 @@ workflow BAM_PROCESSING {
       deduped_chunks=DEDUP_READS.out.dedup_tuple
       deduped_chunks_ch=deduped_chunks.groupTuple()
       COMBINE_DEDUPS(deduped_chunks_ch)
-      BAM_STATS(COMBINE_DEDUPS.out.dedup_tuple, params.barcode_correction_method, params.barcode_correction_percentile)
-      //mapping
-      PBMM2(DEDUP_READS.out.dedup_tuple, params.genome_fasta_f)
+      BAM_STATS(COMBINE_DEDUPS.out.dedup_tuple, params.barcode_correction_method, params.barcode_correction_percentile, params.min_umi_barcodes ?: null)
+
+      //mapping — feed per-sample barcode list to PBMM2 only when MIN_UMI_BARCODES is set
+      if (params.min_umi_barcodes) {
+          pbmm2_ch = DEDUP_READS.out.dedup_tuple
+              .combine(BAM_STATS.out.min_umi_barcodes_txt, by: 0)
+              .multiMap { sid, bam, bc ->
+                  bam_tuple: tuple(sid, bam)
+                  barcodes:  bc
+              }
+          PBMM2(pbmm2_ch.bam_tuple, params.genome_fasta_f, pbmm2_ch.barcodes)
+      } else {
+          PBMM2(DEDUP_READS.out.dedup_tuple, params.genome_fasta_f, [])
+      }
+
       mapped_chunks_ch=PBMM2.out.map_tuple.groupTuple()
       COMBINE_MUPPED(mapped_chunks_ch)
     emit:
