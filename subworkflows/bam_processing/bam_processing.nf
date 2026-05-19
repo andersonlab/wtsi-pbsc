@@ -18,7 +18,7 @@ workflow DEDUP_ONLY {
         SUPSET_BAM(combined_ch)
         DEDUP_READS(SUPSET_BAM.out.chunk_tuple, params.dedup_batch_size)
 
-        deduped_chunks_ch = DEDUP_READS.out.dedup_tuple.groupTuple()
+        deduped_chunks_ch = DEDUP_READS.out.dedup_tuple.groupTuple(size: params.number_of_chunks)
         COMBINE_DEDUPS(deduped_chunks_ch)
         BAM_STATS(COMBINE_DEDUPS.out.dedup_tuple, params.barcode_correction_method, params.barcode_correction_percentile, params.min_umi_barcodes ?: null)
 
@@ -60,7 +60,7 @@ workflow MAPPING_ONLY {
             PBMM2(SUPSET_BAM.out.chunk_tuple, params.genome_fasta_f, [])
         }
 
-        mapped_chunks_ch = PBMM2.out.map_tuple.groupTuple()
+        mapped_chunks_ch = PBMM2.out.map_tuple.groupTuple(size: params.number_of_chunks)
         COMBINE_MUPPED(mapped_chunks_ch)
 
     emit:
@@ -90,8 +90,7 @@ workflow BAM_PROCESSING {
       SUPSET_BAM(combined_ch)
       DEDUP_READS(SUPSET_BAM.out.chunk_tuple, params.dedup_batch_size)
       //these three should create combined dedup files and their stats
-      deduped_chunks=DEDUP_READS.out.dedup_tuple
-      deduped_chunks_ch=deduped_chunks.groupTuple()
+      deduped_chunks_ch = DEDUP_READS.out.dedup_tuple.groupTuple(size: params.number_of_chunks)
       COMBINE_DEDUPS(deduped_chunks_ch)
       BAM_STATS(COMBINE_DEDUPS.out.dedup_tuple, params.barcode_correction_method, params.barcode_correction_percentile, params.min_umi_barcodes ?: null)
 
@@ -108,7 +107,7 @@ workflow BAM_PROCESSING {
           PBMM2(DEDUP_READS.out.dedup_tuple, params.genome_fasta_f, [])
       }
 
-      mapped_chunks_ch=PBMM2.out.map_tuple.groupTuple()
+      mapped_chunks_ch=PBMM2.out.map_tuple.groupTuple(size: params.number_of_chunks)
       COMBINE_MUPPED(mapped_chunks_ch)
     emit:
     mapped_reads = COMBINE_MUPPED.out.combined_bam_tuple
