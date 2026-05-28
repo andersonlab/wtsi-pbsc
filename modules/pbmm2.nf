@@ -11,19 +11,23 @@ process PBMM2 {
         tuple val(sample_id), path("${dedup_bam.name.replaceAll(/\.bam/, '.mapped_chunk.realcells_only.bam')}"), emit: map_tuple
 
     script:
-    def mapped_bam  = dedup_bam.name.replaceAll(/\.bam/, '.mapped_chunk.bam')
-    def out_bam     = dedup_bam.name.replaceAll(/\.bam/, '.mapped_chunk.realcells_only.bam')
-    def tag_manual  = (manual_barcodes) ? """
-bash ${baseDir}/bin/tag_manual_barcodes.sh ${manual_barcodes} ${mapped_bam} ${mapped_bam}.tmp.bam
-mv ${mapped_bam}.tmp.bam ${mapped_bam}
-samtools index -@ ${task.cpus} ${mapped_bam}
-""" : ""
+    def realcells_bam = dedup_bam.name.replaceAll(/\.bam/, '.realcells_only.bam')
+    def out_bam       = dedup_bam.name.replaceAll(/\.bam/, '.mapped_chunk.realcells_only.bam')
+    def tag_manual    = (manual_barcodes) ? """
+bash ${baseDir}/bin/tag_manual_barcodes.sh ${manual_barcodes} ${dedup_bam} ${dedup_bam}.tmp.bam
+mv ${dedup_bam}.tmp.bam ${realcells_bam}
+""" : """
+cp ${dedup_bam} ${realcells_bam}
+"""
     """
     samtools index -@ ${task.cpus} ${dedup_bam}
-    pbmm2 align -j ${task.cpus} --preset ISOSEQ --sort ${dedup_bam} ${genome_fasta_f} ${mapped_bam}
-    samtools index -@ ${task.cpus} ${mapped_bam}
 
     ${tag_manual}
-    samtools view -@ ${task.cpus} -h -d rc:1 -bo ${out_bam} ${mapped_bam}
+    samtools index -@ ${task.cpus} ${realcells_bam}
+    samtools view -@ ${task.cpus} -h -d rc:1 -bo ${realcells_bam}.filtered.bam ${realcells_bam}
+    mv ${realcells_bam}.filtered.bam ${realcells_bam}
+    samtools index -@ ${task.cpus} ${realcells_bam}
+
+    pbmm2 align -j ${task.cpus} --preset ISOSEQ --sort ${realcells_bam} ${genome_fasta_f} ${out_bam}
     """
 }
