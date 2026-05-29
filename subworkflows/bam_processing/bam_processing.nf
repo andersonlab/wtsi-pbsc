@@ -107,7 +107,7 @@ workflow BAM_PROCESSING {
           PBMM2(DEDUP_READS.out.dedup_tuple, params.genome_fasta_f, [])
       }
 
-      mapped_chunks_ch=PBMM2.out.map_tuple.groupTuple(size: params.number_of_chunks)
+      mapped_chunks_ch=PBMM2.out.map_tuple.groupTuple(size: params.number_of_chunks) //Adding size here to avoid waiting for all chunks across all samples to finish mapping before starting to combine. Combining runs now as soon as all chunks for a given sample are done mapping.
       COMBINE_MUPPED(mapped_chunks_ch)
     emit:
     mapped_reads = COMBINE_MUPPED.out.combined_bam_tuple

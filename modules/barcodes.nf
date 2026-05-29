@@ -182,9 +182,7 @@ process BAM_STATS {
 
     script:
     def filter_cmd = (min_umi_barcodes != null) ? """
-awk 'NR==1{ for(i=1;i<=NF;i++) { if(\$i=="#BarcodeSequence") bc=i; if(\$i=="NumberOfReads") nr=i } } \
-     NR>1 && \$nr+0 >= ${min_umi_barcodes} { print \$bc }' \
-     ${sample_id}.dedup.tsv > ${sample_id}.min_umi_barcodes.txt
+python ${baseDir}/bin/filter_bam_stats_barcodes.py -b ${sample_id}.dedup.tsv -o ${sample_id}.min_umi_barcodes.txt --min_umi ${min_umi_barcodes}
 """ : ""
     """
     if [[ "${barcode_correction_method}" == "percentile" ]]; then

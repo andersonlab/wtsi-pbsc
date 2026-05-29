@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Set rc:i:1 on reads whose CB tag matches a manual barcode list.
 # Replaces an existing rc:i:0 in place; adds rc:i:1 if no rc tag is present.
-# Reads that already carry rc:i:1 are left untouched.
-#
+# IMPORTANT: Reads that already carry rc:i:1 that are not in the list will be set to rc:i:0, overriding the existing tag.
+#Barcodes file is a list of barcodes with no header
+
+
 # Usage: tag_manual_barcodes.sh <barcodes_file> <in_bam> <out_bam>
 
 set -euo pipefail
@@ -30,9 +32,13 @@ samtools view -h "$in_bam" \
                 if ($i == "rc:i:1") has_rc1 = 1
             }
         }
-        if (cb in barcodes && !has_rc1) {
+        if (cb in barcodes) {
             if (rc_idx > 0) $rc_idx = "rc:i:1"   # replace existing rc:i:0 (or other)
             else            $0 = $0 OFS "rc:i:1" # no rc tag present, append
+        } else {
+            if (rc_idx > 0) $rc_idx = "rc:i:0"   # replace existing rc:i:0 (or other)
+            else            $0 = $0 OFS "rc:i:0" # no rc tag present, append
+
         }
         print
     }' \
