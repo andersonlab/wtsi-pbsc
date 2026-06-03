@@ -4,7 +4,7 @@ nextflow.enable.dsl=2
 include {SQANTI3_QC; SQANTI3_FILTER} from './modules/sqanti3.nf'
 
 ///Subworkflows
-include {BAM_PROCESSING; MAPPING_ONLY} from './subworkflows/bam_processing/bam_processing.nf'
+include {BAM_PROCESSING; MAPPING_ONLY; DEDUP_ONLY} from './subworkflows/bam_processing/bam_processing.nf'
 include {DECONVOLUTION} from './subworkflows/deconvolution/deconvolution.nf'
 include {ISOQUANT_TWOPASS_PROCESS} from './subworkflows/isoquant_recipes/isoquant_twopass_process.nf'
 include {PFAM_ANNOTATION_WF} from './subworkflows/pfam_annotation/pfam_annotation.nf'
@@ -52,6 +52,10 @@ workflow bam_processing_wf {
 
 workflow mapping_only_wf {
     MAPPING_ONLY()
+}
+
+workflow dedup_only_wf {
+    DEDUP_ONLY()
 }
 
 workflow deconvolution_wf {
