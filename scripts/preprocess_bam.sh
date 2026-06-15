@@ -12,7 +12,7 @@ cpus=$5
 output_bam="${sample_id}.${chrom}${suffix}.bam"
 #Removes supplementary alignments (note this may affect the detection of chimeric/fusion genes)
 #Appends sample_id to CB tag
-#Adds sample_id to qname (read id)
+#Adds CB tag (along with sample id) to qname (read id)
 
 samtools view -@ ${cpus} -h -F 2048 ${bam} ${chrom} |\
 awk -v sample=${sample_id} -v chrom=${chrom} 'BEGIN {OFS="\t"}{\
@@ -21,6 +21,15 @@ if ($0 ~ /^@/) {\
 next} \
 for(i=12; i<=NF; i++) \
   {if ($i ~ /^CB:Z:/) {$i = $i"_"sample}}print}' |\
-awk -v sample=${sample_id} 'BEGIN {OFS="\t"}{if ($0 ~ /^@/) {print; next} else {$1 = $1"_"sample;print $0}}' |\
+awk -v sample=${sample_id} 'BEGIN {FS=OFS="\t"}
+{
+  if ($0 ~ /^@/) {print; next}
+  cb = ""
+  for (i=12; i<=NF; i++) {
+    if ($i ~ /^CB:Z:/) { cb = substr($i, 6); break }
+  }
+  $1 = $1"_"cb
+  print
+}' |\
 samtools view -@ ${cpus} -h -bo $output_bam - ;
 samtools index -@ ${cpus} $output_bam ;
