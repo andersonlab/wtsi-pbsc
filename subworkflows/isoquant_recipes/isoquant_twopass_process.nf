@@ -9,43 +9,51 @@ workflow ISOQUANT_TWOPASS_PROCESS {
     fullBam_ch
   main:
     if (fullBam_ch == 'independent workflow'){
-      Channel
-        .fromPath(params.input_samples_path)
-        .splitCsv(sep: ',', header: true)
-        //.filter { it -> !(it.sample_id in excluded_samples_list) }
-        .map { it ->
-          def sample_id = it.sample_id
-          def bam_path = "${params.results_output}qc/mapped/${sample_id}.mapped.realcells_only.bam"
-          def bai_path = "${params.results_output}qc/mapped/${sample_id}.mapped.realcells_only.bam.bai"
-          [sample_id, bam_path, bai_path]
-        }
-        .set { fullBam_ch }
-      Channel
-        .fromPath(params.input_samples_path)
-        .splitCsv(sep: ',', header: true)
-        .map { it -> [it.sample_id, it.nr_samples_multiplexed] } // Create a tuple with bam_path and sample_id
-        .set { sampleNames_nrDons }
-
-      fullBam_ch =  fullBam_ch.combine(sampleNames_nrDons, by: 0)
-      fullBam_ch=fullBam_ch
-      .filter { experiment, bam, bai, npooled -> npooled == '1' }
-      .map { experiment, bam, bai, npooled -> [experiment, bam, bai] }
-
-      def folder = file("${params.results_output}deconvolution/bam/")
-      if (folder.exists()) {
+      def samplesheet_header = file(params.input_samples_path).readLines()[0].split(',') as List
+      if ('mapped_bam' in samplesheet_header) {
         Channel
-          .fromPath("${params.results_output}deconvolution/bam/*.bam")
-          .map { bam_file -> 
-              // Removes only the LAST _donorN suffix
-              def name = bam_file.baseName.replaceAll(/_donor\d+$/, '')
-              tuple(name, bam_file, file(bam_file.toString() + ".bai"))
+          .fromPath(params.input_samples_path)
+          .splitCsv(sep: ',', header: true)
+          .map { it -> [it.sample_id, it.mapped_bam, it.mapped_bam + ".bai"] }
+          .set { fullBam_ch }
+      } else {
+        Channel
+          .fromPath(params.input_samples_path)
+          .splitCsv(sep: ',', header: true)
+          .map { it ->
+            def sample_id = it.sample_id
+            def bam_path = "${params.results_output}qc/mapped/${sample_id}.mapped.realcells_only.bam"
+            def bai_path = "${params.results_output}qc/mapped/${sample_id}.mapped.realcells_only.bam.bai"
+            [sample_id, bam_path, bai_path]
           }
-          .set { split_bams }
-        split_bams =  split_bams.combine(sampleNames_nrDons, by: 0)
-        split_bams = split_bams
-        .filter { experiment, bam, bai, npooled -> npooled != '1' }
-        .map { experiment, bam, bai, npooled -> [bam.simpleName, bam, bai] }
-        fullBam_ch=fullBam_ch.mix(split_bams)
+          .set { fullBam_ch }
+        Channel
+          .fromPath(params.input_samples_path)
+          .splitCsv(sep: ',', header: true)
+          .map { it -> [it.sample_id, it.nr_samples_multiplexed] } // Create a tuple with bam_path and sample_id
+          .set { sampleNames_nrDons }
+
+        fullBam_ch =  fullBam_ch.combine(sampleNames_nrDons, by: 0)
+        fullBam_ch=fullBam_ch
+        .filter { experiment, bam, bai, npooled -> npooled == '1' }
+        .map { experiment, bam, bai, npooled -> [experiment, bam, bai] }
+
+        def deconv_dir_path = file("${params.results_output}deconvolution/bam/")
+        if (deconv_dir_path.exists()) {
+          Channel
+            .fromPath("${params.results_output}deconvolution/bam/*.bam")
+            .map { bam_file ->
+                // Removes only the LAST _donorN suffix
+                def name = bam_file.baseName.replaceAll(/_donor\d+$/, '')
+                tuple(name, bam_file, file(bam_file.toString() + ".bai"))
+            }
+            .set { split_bams }
+          split_bams =  split_bams.combine(sampleNames_nrDons, by: 0)
+          split_bams = split_bams
+          .filter { experiment, bam, bai, npooled -> npooled != '1' }
+          .map { experiment, bam, bai, npooled -> [bam.simpleName, bam, bai] }
+          fullBam_ch=fullBam_ch.mix(split_bams)
+        }
       }
     }
     def chromosomes_list = ['chr1', 'chr2', 'chr3', 'chr4', 'chr5', 'chr6', 'chr7', 'chr8', 'chr9',
