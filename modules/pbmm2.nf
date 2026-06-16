@@ -28,12 +28,8 @@ cp ${dedup_bam} ${realcells_bam}
     mv ${realcells_bam}.filtered.bam ${realcells_bam}
     samtools index -@ ${task.cpus} ${realcells_bam}
 
-    pbmm2 align -j ${task.cpus} --preset ISOSEQ --sort ${realcells_bam} ${genome_fasta_f} ${out_bam}.tmp.bam
+    pbmm2 align -j ${task.cpus} --preset ISOSEQ --sort ${realcells_bam} ${genome_fasta_f} ${out_bam}
 
-    samtools index -@ ${task.cpus} ${out_bam}.tmp.bam
-    #Removing supplementary alignments
-    samtools view -@ ${task.cpus} -h -F 2048 -b ${out_bam}.tmp.bam > ${out_bam}
     samtools index -@ ${task.cpus} ${out_bam}
-
     """
 }
