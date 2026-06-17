@@ -9,6 +9,7 @@ process PBMM2 {
 
     output:
         tuple val(sample_id), path("${dedup_bam.name.replaceAll(/\.bam/, '.mapped_chunk.realcells_only.bam')}"), emit: map_tuple
+        tuple val(sample_id), path("${dedup_bam.name.replaceAll(/\.bam/, '.mapped_chunk.realcells_only.bam')}.supplementary.bam"), emit: supplementary_tuple
 
     script:
     def realcells_bam = dedup_bam.name.replaceAll(/\.bam/, '.realcells_only.bam')
@@ -28,8 +29,15 @@ cp ${dedup_bam} ${realcells_bam}
     mv ${realcells_bam}.filtered.bam ${realcells_bam}
     samtools index -@ ${task.cpus} ${realcells_bam}
 
-    pbmm2 align -j ${task.cpus} --preset ISOSEQ --sort ${realcells_bam} ${genome_fasta_f} ${out_bam}
+    pbmm2 align -j ${task.cpus} --preset ISOSEQ --sort ${realcells_bam} ${genome_fasta_f} ${out_bam}.tmp.bam
 
+    samtools index -@ ${task.cpus} ${out_bam}.tmp.bam
+    #Storing supplementary alignments in a separate BAM file
+    samtools view -@ ${task.cpus} -h -f 2048 -bo ${out_bam}.supplementary.bam ${out_bam}.tmp.bam
+    samtools index -@ ${task.cpus} ${out_bam}.supplementary.bam
+    #Removing supplementary alignments
+    samtools view -@ ${task.cpus} -h -F 2048 -bo ${out_bam} ${out_bam}.tmp.bam 
     samtools index -@ ${task.cpus} ${out_bam}
+
     """
 }
