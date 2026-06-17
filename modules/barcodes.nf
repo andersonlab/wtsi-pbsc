@@ -187,6 +187,25 @@ process COMBINE_MUPPED_SUPPLEMENTARY {
 }
 
 
+process COMBINE_MUPPED_NOSUPPLEMENTARY {
+    label 'combine_bams'
+    publishDir "${params.results_output}qc/mapped", mode: 'copy'
+
+    input:
+        tuple val(sample_id), path(nosupplementary_bam_chunks)
+
+    output:
+        tuple val(sample_id), path("${sample_id}.mapped.realcells_only.nosupplementary.bam"), path("${sample_id}.mapped.realcells_only.nosupplementary.bam.bai"), emit: combined_nosupplementary_tuple
+
+    script:
+    """
+    samtools merge -@ ${task.cpus} -f ${sample_id}.mapped.realcells_only.nosupplementary.merged.bam ${nosupplementary_bam_chunks.join(' ')}
+    samtools sort -@ ${task.cpus} -o ${sample_id}.mapped.realcells_only.nosupplementary.bam ${sample_id}.mapped.realcells_only.nosupplementary.merged.bam
+    samtools index -@ ${task.cpus} ${sample_id}.mapped.realcells_only.nosupplementary.bam
+    """
+}
+
+
 process BAM_STATS {
     label 'bam_stats'
     publishDir "${params.results_output}qc/dedup", mode: 'copy'

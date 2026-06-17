@@ -1,7 +1,7 @@
 include {DONOR_ASSIGNMENT} from '../donor_assignment/donor_assignment.nf'
 include { MPILEUP; CELLSNP; VIREO; SUBSET_VCF }  from '../../modules/deconvolution.nf'
 //include {GET_BARCODES; SPLIT_BAM; INDEX_SPLIT_BAM} from '../../modules/split_bam.nf'
-include {SPLIT_BAM_SINTO; INDEX_SPLIT_BAM} from '../../modules/split_bam.nf'
+include {SPLIT_BAM_SINTO; INDEX_SPLIT_BAM; INDEX_SPLIT_BAM as INDEX_SPLIT_BAM_SUPPLEMENTARY; INDEX_SPLIT_BAM as INDEX_SPLIT_BAM_NOSUPPLEMENTARY} from '../../modules/split_bam.nf'
 
 workflow DECONVOLUTION {
   take:
@@ -41,11 +41,22 @@ workflow DECONVOLUTION {
     VIREO(sampleNames_cellsnp_nrDons)
     mapped_reads = mapped_reads.combine(VIREO.out.barcode_list, by: 0)
     SPLIT_BAM_SINTO(mapped_reads)
+
     donor_bams = SPLIT_BAM_SINTO.out.donor_bams.flatMap { val, paths ->
       paths.collect { p -> tuple(p.simpleName, p) } }
     INDEX_SPLIT_BAM(donor_bams)
-    fullBam_ch_pre=INDEX_SPLIT_BAM.out.donor_bams
-    fullBam_ch=fullBam_ch_pre.mix(not_for_deconv)
+    fullBam_ch_pre = INDEX_SPLIT_BAM.out.donor_bams
+    fullBam_ch = fullBam_ch_pre.mix(not_for_deconv)
+
+    donor_supplementary_bams = SPLIT_BAM_SINTO.out.donor_supplementary_bams.flatMap { val, paths ->
+      paths.collect { p -> tuple(p.simpleName, p) } }
+    INDEX_SPLIT_BAM_SUPPLEMENTARY(donor_supplementary_bams)
+    supplementaryBam_ch = INDEX_SPLIT_BAM_SUPPLEMENTARY.out.donor_bams
+
+    donor_nosupplementary_bams = SPLIT_BAM_SINTO.out.donor_nosupplementary_bams.flatMap { val, paths ->
+      paths.collect { p -> tuple(p.simpleName, p) } }
+    INDEX_SPLIT_BAM_NOSUPPLEMENTARY(donor_nosupplementary_bams)
+    nosupplementaryBam_ch = INDEX_SPLIT_BAM_NOSUPPLEMENTARY.out.donor_bams
     if (params.run_gtcheck== 'TRUE' || params.run_barcode_check == 'TRUE') {
         VIREO.out.sample_donor_ids.collectFile(name: 'vireo_map.tsv', newLine: true) { sample_id, file_path ->
             "${sample_id}\t${file_path}"
@@ -56,4 +67,6 @@ workflow DECONVOLUTION {
 
   emit:
     fullBam_ch
+    supplementaryBam_ch
+    nosupplementaryBam_ch
 }
