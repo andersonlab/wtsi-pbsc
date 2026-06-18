@@ -1,5 +1,4 @@
 include {genedb_perChr_wf} from '../isoquant_components/genedb.nf'
-include {preprocess_bam_perChr_wf} from '../isoquant_components/preprocess_bam.nf'
 include {isoquant_twopass_chunked_wf; isoquant_chrM;collect_output_wf} from './isoquant_twopass.nf'
 include {chroms} from '../core/chroms.nf'
 
@@ -68,7 +67,7 @@ workflow ISOQUANT_TWOPASS_PROCESS {
     chrom_ch=chroms(chromosomes_list)
 
     chrom_genedb_fasta_chr_ch=genedb_perChr_wf(chrom_ch,params.gtf_f,params.genome_fasta_f)
-    preprocessed_bam_perChr_ch=preprocess_bam_perChr_wf(chrom_ch,fullBam_ch)
+    preprocessed_bam_perChr_ch=chrom_ch.combine(fullBam_ch)
 
     //Processing chrM separately
     preprocessed_bam_perChr_ch.filter{chrom,sample_id,bam,bai -> chrom=="chrM"}.set{preprocessed_bam_chrM_ch}
