@@ -41,18 +41,19 @@ workflow ISOQUANT_TWOPASS_PROCESS {
         def deconv_dir_path = file("${params.results_output}deconvolution/bam/")
         if (deconv_dir_path.exists()) {
           Channel
-            .fromPath("${params.results_output}deconvolution/bam/*.bam")
-            .map { bam_file ->
-                // Removes only the LAST _donorN suffix
-                def name = bam_file.baseName.replaceAll(/_donor\d+$/, '')
-                tuple(name, bam_file, file(bam_file.toString() + ".bai"))
+            .fromPath(params.input_samples_path)
+            .splitCsv(sep: ',', header: true)
+            .filter { it -> it.nr_samples_multiplexed != '1' }
+            .flatMap { it ->
+              def sample_id = it.sample_id
+              def nr_donors = it.nr_samples_multiplexed as int
+              (0..<nr_donors).collect { n ->
+                def bam_path = "${params.results_output}deconvolution/bam/${sample_id}_donor${n}.nosupplementary.bam"
+                tuple("${sample_id}_donor${n}" as String, file(bam_path), file("${bam_path}.bai"))
+              }
             }
             .set { split_bams }
-          split_bams =  split_bams.combine(sampleNames_nrDons, by: 0)
-          split_bams = split_bams
-          .filter { experiment, bam, bai, npooled -> npooled != '1' }
-          .map { experiment, bam, bai, npooled -> [bam.simpleName, bam, bai] }
-          fullBam_ch=fullBam_ch.mix(split_bams)
+          fullBam_ch = fullBam_ch.mix(split_bams)
         }
       }
     }
