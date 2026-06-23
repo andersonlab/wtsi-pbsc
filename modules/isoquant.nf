@@ -555,11 +555,11 @@ label 'mini_job'
   input:
       tuple val(chrom), val(sample_id),path(read_assignment_f), path(bam)
   output:
-      tuple val(chrom), val(sample_id), path("${sample_id}.${chrom}.mapped.realcells_only.processed.model_construction_reads.bam"), path("${sample_id}.${chrom}.mapped.realcells_only.processed.model_construction_reads.bam.bai")
+      tuple val(chrom), val(sample_id), path("${sample_id}.${chrom}.model_construction_reads.bam"), path("${sample_id}.${chrom}.model_construction_reads.bam.bai")
   script:
   """
   model_construction_reads_list="${sample_id}.${chrom}.model_construction_reads.txt"
-  model_construction_bam="${sample_id}.${chrom}.mapped.realcells_only.processed.model_construction_reads.bam"
+  model_construction_bam="${sample_id}.${chrom}.model_construction_reads.bam"
 
   zcat ${read_assignment_f} | tail -n+4 | awk '{if( (\$6=="intergenic") || (\$6=="inconsistent_ambiguous") || (\$6=="inconsistent") || (\$6=="inconsistent_non_intronic"))print \$1}' | sort | uniq > \${model_construction_reads_list}
 

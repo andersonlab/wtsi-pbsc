@@ -341,7 +341,7 @@ workflow isoquant_twopass_chunked_wf {
       .groupTuple(by:0)
       .combine(chrom_region_ch,by:0)
       .set {modelconstructionBam_Region_groupedTuple_ch}
-    modelconstructionRegionBam=split_bams_perChunk(modelconstructionBam_Region_groupedTuple_ch,"mapped.realcells_only.processed.model_construction_reads")
+    modelconstructionRegionBam=split_bams_perChunk(modelconstructionBam_Region_groupedTuple_ch,"model_construction_reads")
 
 
     ///Runnning second pass
