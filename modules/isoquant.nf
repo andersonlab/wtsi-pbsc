@@ -197,118 +197,72 @@ process replace_novel_names {
     output_dir=${programmaticRegion}_renamed/
     mkdir -p \$output_dir
 
-    transcriptgenefix_file_suffixes=(\\
-    .discovered_gene_counts.tsv  \\
-    .discovered_gene_grouped_tag_CB_counts.features.tsv \\
-    .discovered_gene_grouped_tag_CB_counts.linear.tsv \\
-    .discovered_gene_grouped_tag_CB_tpm.features.tsv \\
-    .discovered_gene_tpm.tsv \\
-    .discovered_transcript_counts.tsv \\
-    .discovered_transcript_grouped_tag_CB_counts.features.tsv \\
-    .discovered_transcript_grouped_tag_CB_counts.linear.tsv \\
-    .discovered_transcript_grouped_tag_CB_tpm.features.tsv \\
-    .discovered_transcript_tpm.tsv \\
-    .gene_counts.tsv \\
-    .gene_grouped_tag_CB_counts.features.tsv \\
-    .gene_grouped_tag_CB_counts.linear.tsv \\
-    .gene_grouped_tag_CB_tpm.features.tsv \\
-    .novel_vs_known.SQANTI-like.tsv \\
-    .transcript_model_reads.tsv.gz \\
-    .transcript_models.gtf \\
-    .extended_annotation.gtf \\
-    .transcript_counts.tsv \\
-    .transcript_grouped_tag_CB_counts.features.tsv \\
-    .transcript_grouped_tag_CB_counts.linear.tsv  \\
-    .transcript_grouped_tag_CB_tpm.features.tsv \\
-    )
+    # Load suffix lists from data files
+    transcriptgenefix_suffixes=()
+    while IFS= read -r line || [[ -n "\$line" ]]; do
+      transcriptgenefix_suffixes+=("\$line")
+    done < ${baseDir}/data/isoquant_transcriptgenefix_suffixes.txt
+    exonfix_suffixes=()
+    while IFS= read -r line || [[ -n "\$line" ]]; do
+      exonfix_suffixes+=("\$line")
+    done < ${baseDir}/data/isoquant_exonfix_suffixes.txt
 
-    asis_file_suffixes=(\\
-    .intron_grouped_tag_CB_counts.linear.tsv  \\
-    .intron_counts.tsv \\
-    .exon_counts.tsv \\
-    .exon_grouped_tag_CB_counts.linear.tsv \\
-    .discovered_gene_grouped_tag_CB_counts.matrix.mtx \\
-    .discovered_gene_grouped_tag_CB_tpm.matrix.mtx \\
-    .discovered_transcript_grouped_tag_CB_counts.matrix.mtx \\
-    .discovered_transcript_grouped_tag_CB_tpm.matrix.mtx \\
-    .gene_grouped_tag_CB_counts.matrix.mtx \\
-    .gene_grouped_tag_CB_tpm.matrix.mtx \\
-    .transcript_grouped_tag_CB_counts.matrix.mtx \\
-    .transcript_grouped_tag_CB_tpm.matrix.mtx \\
-    .transcript_grouped_tag_CB_tpm.barcodes.tsv \\
-    .transcript_grouped_tag_CB_counts.barcodes.tsv \\
-    .gene_grouped_tag_CB_tpm.barcodes.tsv \\
-    .gene_grouped_tag_CB_counts.barcodes.tsv \\
-    .discovered_transcript_grouped_tag_CB_tpm.barcodes.tsv \\
-    .discovered_transcript_grouped_tag_CB_counts.barcodes.tsv \\
-    .discovered_gene_grouped_tag_CB_tpm.barcodes.tsv \\
-    .discovered_gene_grouped_tag_CB_counts.barcodes.tsv \\
-    .read_assignments.tsv.gz \\
-    .corrected_reads.bed.gz \\
-    .transcript_tpm.tsv \\
-    .gene_tpm.tsv \\
-    )
+    # Build lookup set for O(1) membership test
+    declare -A transcriptgenefix_set
+    for s in "\${transcriptgenefix_suffixes[@]}"; do
+      transcriptgenefix_set["\$s"]=1
+    done
 
-    exonfix_file_suffixes=(\\
-    .extended_annotation.gtf \\
-    .transcript_models.gtf \\
-    )
-
-
-    for suffix in \${transcriptgenefix_file_suffixes[@]}; do
-      input_f="\${input_dir}${programmaticRegion}\${suffix}"
-      output_f="\${output_dir}${programmaticRegion}\${suffix}"
-      if [[ -e "\$input_f" ]]; then
-        zcat -f \${input_f} | sed -E "s/(transcript[0-9]+)\\.([^.]+)\\.([^.]+)/\\1.${programmaticRegion}.\\3/g; s/(novel_gene)_([^_]+)_([0-9]+)/\\1_${programmaticRegion}_\\3/g" > \${output_f};
-      fi;
-    done;
-
-    for suffix in \${asis_file_suffixes[@]}; do
-      input_f="\${input_dir}${programmaticRegion}\${suffix}"
-      output_f="\${output_dir}${programmaticRegion}\${suffix}"
-      if [[ -e "\$input_f" ]]; then
-        cp \${input_f} \${output_f};
-      fi;
-    done;
-
-    #We also need to fix exon_ids in both extended_annotation and transcript_models GTFs
-    for suffix in \${exonfix_file_suffixes[@]}; do
-      #saving exonfixed GTFs as tmp file
-      output_f_noexonfix="\${output_dir}${programmaticRegion}\${suffix}";
-      output_f_withexonfixtmp="\${output_dir}${programmaticRegion}\${suffix}.tmp";
-      if [[ -e "\$output_f_noexonfix" ]]; then
-        bash ${baseDir}/scripts/fix_exon_ids.sh "\${output_f_noexonfix}" "\${output_f_withexonfixtmp}" "${programmaticRegion}";
-        #reverting to original name
-        rm \${output_f_noexonfix}
-        mv \${output_f_withexonfixtmp} \${output_f_noexonfix}
-      fi;
-    done;
-
-
-    #This should later be added to isoquant_chunked process
-    #There is a bug in Isoquant where if i include only inconsistent reads it still generates known isoforms in the .discovered_transcript_counts.tsv and discovered_transcript_grouped_counts.linear.tsv file (fixed in IsoQuant 3.7.0 so this is extra cautious)
-    output_suffix_withknown=.discovered_transcript_counts.tsv
-    output_suffix_noknown=.discovered_transcript_counts.noknown.tsv
-    output_f_withknown="\${output_dir}${programmaticRegion}\${output_suffix_withknown}"
-    output_f_noknown="\${output_dir}${programmaticRegion}\${output_suffix_noknown}"
-    if [[ -e "\${output_f_withknown}" ]]; then
-      grep -v -e "^ENST" -e "__ambiguous" -e "__no_feature" -e "__not_aligned" \${output_f_withknown} > \${output_f_noknown}
+    # Detect whether any novel transcript models exist in this chunk
+    input_transcript_counts="\${input_dir}${programmaticRegion}.discovered_transcript_counts.tsv"
+    if [[ -e "\$input_transcript_counts" ]] && [[ \$(wc -l < "\$input_transcript_counts") -gt 1 ]]; then
+      HAS_NOVEL=true
+    else
+      HAS_NOVEL=false
     fi
 
-    output_suffix_withknown=.discovered_transcript_grouped_tag_CB_counts.linear.tsv
-    output_suffix_noknown=.discovered_transcript_grouped_tag_CB_counts.linear.noknwn.tsv
-    output_f_withknown="\${output_dir}${programmaticRegion}\${output_suffix_withknown}"
-    output_f_noknown="\${output_dir}${programmaticRegion}\${output_suffix_noknown}"
-    if [[ -e "\${output_f_withknown}" ]]; then
-      grep -v -e "^ENST" -e "__ambiguous" -e "__no_feature" -e "__not_aligned" \${output_f_withknown} > \${output_f_noknown}
+    # Route every file: transcriptgenefix files get sed (or symlink if no novel),
+    # everything else gets a symlink unconditionally
+    for f in "\${input_dir}"*; do
+      [[ -f "\$f" ]] || continue
+      fname=\$(basename "\$f")
+      suffix="\${fname#${programmaticRegion}}"
+      output_f="\${output_dir}\${fname}"
+      if [[ -n "\${transcriptgenefix_set["\$suffix"]+_}" ]]; then
+        if [[ "\$HAS_NOVEL" == "true" ]]; then
+          zcat -f "\$f" | sed -E "s/(transcript[0-9]+)\\.([^.]+)\\.([^.]+)/\\1.${programmaticRegion}.\\3/g; s/(novel_gene)_([^_]+)_([0-9]+)/\\1_${programmaticRegion}_\\3/g" > "\$output_f"
+        else
+          ln -s \$(realpath "\$f") "\$output_f"
+        fi
+      else
+        ln -s \$(realpath "\$f") "\$output_f"
+      fi
+    done
+
+    # Fix novel exon IDs in GTFs (only needed when novel models exist)
+    if [[ "\$HAS_NOVEL" == "true" ]]; then
+      for suffix in "\${exonfix_suffixes[@]}"; do
+        output_f="\${output_dir}${programmaticRegion}\${suffix}"
+        if [[ -e "\$output_f" ]]; then
+          output_f_tmp="\${output_f}.tmp"
+          bash ${baseDir}/scripts/fix_exon_ids.sh "\$output_f" "\$output_f_tmp" "${programmaticRegion}"
+          rm "\$output_f"
+          mv "\$output_f_tmp" "\$output_f"
+        fi
+      done
     fi
 
-    output_suffix_withknown=.discovered_transcript_grouped_tag_CB_counts.linear.tsv
-    output_suffix_noknown=.discovered_transcript_grouped_tag_CB_counts.linear.noknown.tsv
-    output_f_withknown="\${output_dir}${programmaticRegion}\${output_suffix_withknown}"
-    output_f_noknown="\${output_dir}${programmaticRegion}\${output_suffix_noknown}"
+    # Generate .noknown.tsv files (filter known transcripts introduced by IsoQuant bug, fixed in 3.7.0)
+    output_f_withknown="\${output_dir}${programmaticRegion}.discovered_transcript_counts.tsv"
+    output_f_noknown="\${output_dir}${programmaticRegion}.discovered_transcript_counts.noknown.tsv"
     if [[ -e "\${output_f_withknown}" ]]; then
-      grep -v -e "^ENST" -e "__ambiguous" -e "__no_feature" -e "__not_aligned" \${output_f_withknown} > \${output_f_noknown}
+      grep -v -e "^ENST" -e "__ambiguous" -e "__no_feature" -e "__not_aligned" "\${output_f_withknown}" > "\${output_f_noknown}"
+    fi
+
+    output_f_withknown="\${output_dir}${programmaticRegion}.discovered_transcript_grouped_tag_CB_counts.linear.tsv"
+    output_f_noknown="\${output_dir}${programmaticRegion}.discovered_transcript_grouped_tag_CB_counts.linear.noknown.tsv"
+    if [[ -e "\${output_f_withknown}" ]]; then
+      grep -v -e "^ENST" -e "__ambiguous" -e "__no_feature" -e "__not_aligned" "\${output_f_withknown}" > "\${output_f_noknown}"
     fi
     """
 }
@@ -526,101 +480,66 @@ process replace_novel_names_firsPass_singlenovelname {
     output_dir=${sample_id}.${chrom}_renamed/
     mkdir -p \$output_dir
 
-    transcriptgenefix_file_suffixes=(\\
-    .discovered_gene_counts.tsv  \\
-    .discovered_gene_grouped_tag_CB_counts.features.tsv \\
-    .discovered_gene_grouped_tag_CB_counts.linear.tsv \\
-    .discovered_gene_grouped_tag_CB_tpm.features.tsv \\
-    .discovered_gene_tpm.tsv \\
-    .discovered_transcript_counts.tsv \\
-    .discovered_transcript_grouped_tag_CB_counts.features.tsv \\
-    .discovered_transcript_grouped_tag_CB_counts.linear.tsv \\
-    .discovered_transcript_grouped_tag_CB_tpm.features.tsv \\
-    .discovered_transcript_tpm.tsv \\
-    .gene_counts.tsv \\
-    .gene_grouped_tag_CB_counts.features.tsv \\
-    .gene_grouped_tag_CB_counts.linear.tsv \\
-    .gene_grouped_tag_CB_tpm.features.tsv \\
-    .novel_vs_known.SQANTI-like.tsv \\
-    .transcript_model_reads.tsv.gz \\
-    .transcript_models.gtf \\
-    .extended_annotation.gtf \\
-    .transcript_counts.tsv \\
-    .transcript_grouped_tag_CB_counts.features.tsv \\
-    .transcript_grouped_tag_CB_counts.linear.tsv  \\
-    .transcript_grouped_tag_CB_tpm.features.tsv \\
-    )
+    # Load suffix lists from data files
+    transcriptgenefix_suffixes=()
+    while IFS= read -r line || [[ -n "\$line" ]]; do
+      transcriptgenefix_suffixes+=("\$line")
+    done < ${baseDir}/data/isoquant_transcriptgenefix_suffixes.txt
+    exonfix_suffixes=()
+    while IFS= read -r line || [[ -n "\$line" ]]; do
+      exonfix_suffixes+=("\$line")
+    done < ${baseDir}/data/isoquant_exonfix_suffixes.txt
 
-    asis_file_suffixes=(\\
-    .intron_grouped_tag_CB_counts.linear.tsv  \\
-    .intron_counts.tsv \\
-    .exon_counts.tsv \\
-    .exon_grouped_tag_CB_counts.linear.tsv \\
-    .discovered_gene_grouped_tag_CB_counts.matrix.mtx \\
-    .discovered_gene_grouped_tag_CB_tpm.matrix.mtx \\
-    .discovered_transcript_grouped_tag_CB_counts.matrix.mtx \\
-    .discovered_transcript_grouped_tag_CB_tpm.matrix.mtx \\
-    .gene_grouped_tag_CB_counts.matrix.mtx \\
-    .gene_grouped_tag_CB_tpm.matrix.mtx \\
-    .transcript_grouped_tag_CB_counts.matrix.mtx \\
-    .transcript_grouped_tag_CB_tpm.matrix.mtx \\
-    .transcript_grouped_tag_CB_tpm.barcodes.tsv \\
-    .transcript_grouped_tag_CB_counts.barcodes.tsv \\
-    .gene_grouped_tag_CB_tpm.barcodes.tsv \\
-    .gene_grouped_tag_CB_counts.barcodes.tsv \\
-    .discovered_transcript_grouped_tag_CB_tpm.barcodes.tsv \\
-    .discovered_transcript_grouped_tag_CB_counts.barcodes.tsv \\
-    .discovered_gene_grouped_tag_CB_tpm.barcodes.tsv \\
-    .discovered_gene_grouped_tag_CB_counts.barcodes.tsv \\
-    .read_assignments.tsv.gz \\
-    .corrected_reads.bed.gz \\
-    .transcript_tpm.tsv \\
-    .gene_tpm.tsv \\
-    )
+    # Build lookup set for O(1) membership test
+    declare -A transcriptgenefix_set
+    for s in "\${transcriptgenefix_suffixes[@]}"; do
+      transcriptgenefix_set["\$s"]=1
+    done
 
-    exonfix_file_suffixes=(\\
-    .extended_annotation.gtf \\
-    .transcript_models.gtf \\
-    )
+    # Detect whether any novel transcript models exist in this chunk
+    input_transcript_counts="\${input_dir}${sample_id}.${chrom}.discovered_transcript_counts.tsv"
+    if [[ -e "\$input_transcript_counts" ]] && [[ \$(wc -l < "\$input_transcript_counts") -gt 1 ]]; then
+      HAS_NOVEL=true
+    else
+      HAS_NOVEL=false
+    fi
 
+    # Route every file: transcriptgenefix files get sed (or symlink if no novel),
+    # everything else gets a symlink unconditionally
+    for f in "\${input_dir}"*; do
+      [[ -f "\$f" ]] || continue
+      fname=\$(basename "\$f")
+      suffix="\${fname#${sample_id}.${chrom}}"
+      output_f="\${output_dir}\${fname}"
+      if [[ -n "\${transcriptgenefix_set["\$suffix"]+_}" ]]; then
+        if [[ "\$HAS_NOVEL" == "true" ]]; then
+          zcat -f "\$f" | sed -E "s/(transcript[0-9]+)\\.([^.]+)\\.([^.]+)/\\1.\\2_${sample_id}.\\3/g; s/(novel_gene)_([^_]+)_([0-9]+)/\\1_${sample_id}_\\3/g" > "\$output_f"
+        else
+          ln -s \$(realpath "\$f") "\$output_f"
+        fi
+      else
+        ln -s \$(realpath "\$f") "\$output_f"
+      fi
+    done
 
-    for suffix in \${transcriptgenefix_file_suffixes[@]}; do
-      input_f="\${input_dir}${sample_id}.${chrom}\${suffix}"
-      output_f="\${output_dir}${sample_id}.${chrom}\${suffix}"
-      if [[ -e "\$input_f" ]]; then
-        zcat -f \${input_f} | sed -E "s/(transcript[0-9]+)\\.([^.]+)\\.([^.]+)/\\1.\\2_${sample_id}.\\3/g; s/(novel_gene)_([^_]+)_([0-9]+)/\\1_${sample_id}_\\3/g" > \${output_f}
-      fi;
-    done;
+    # Fix novel exon IDs in GTFs (only needed when novel models exist)
+    if [[ "\$HAS_NOVEL" == "true" ]]; then
+      for suffix in "\${exonfix_suffixes[@]}"; do
+        output_f="\${output_dir}${sample_id}.${chrom}\${suffix}"
+        if [[ -e "\$output_f" ]]; then
+          output_f_tmp="\${output_f}.tmp"
+          bash ${baseDir}/scripts/fix_exon_ids.sh "\$output_f" "\$output_f_tmp" "${sample_id}"
+          rm "\$output_f"
+          mv "\$output_f_tmp" "\$output_f"
+        fi
+      done
+    fi
 
-    for suffix in \${asis_file_suffixes[@]}; do
-      input_f="\${input_dir}${sample_id}.${chrom}\${suffix}"
-      output_f="\${output_dir}${sample_id}.${chrom}\${suffix}"
-      if [[ -e "\$input_f" ]]; then
-        cp \${input_f} \${output_f}
-      fi;
-    done;
-
-    #We also need to fix exon_ids in both extended_annotation and transcript_models GTFs
-    for suffix in \${exonfix_file_suffixes[@]}; do
-      #saving exonfixed GTFs as tmp file
-      output_f_noexonfix="\${output_dir}${sample_id}.${chrom}\${suffix}";
-      if [[ -e "\$output_f_noexonfix" ]]; then
-        output_f_withexonfixtmp="\${output_dir}${sample_id}.${chrom}\${suffix}.tmp";
-        bash ${baseDir}/scripts/fix_exon_ids.sh "\${output_f_noexonfix}" "\${output_f_withexonfixtmp}" "${sample_id}";
-        #reverting to original name
-        rm \${output_f_noexonfix}
-        mv \${output_f_withexonfixtmp} \${output_f_noexonfix}
-      fi;
-    done;
-
-    #This should later be added to isoquant_chunked process
-    #There is a bug in Isoquant where if i include only inconsistent reads it still generates known isoforms in the .discovered_transcript_counts.tsv and discovered_transcript_grouped_counts.linear.tsv file (fixed in IsoQuant 3.7.0 so this is extra cautious)
-    output_suffix_withknown=.discovered_transcript_counts.tsv
-    output_suffix_noknown=.discovered_transcript_counts.noknown.tsv
-    output_f_withknown="\${output_dir}${sample_id}.${chrom}\${output_suffix_withknown}"
-    output_f_noknown="\${output_dir}${sample_id}.${chrom}\${output_suffix_noknown}"
+    # Generate .noknown.tsv (filter special-token rows introduced by IsoQuant bug, fixed in 3.7.0)
+    output_f_withknown="\${output_dir}${sample_id}.${chrom}.discovered_transcript_counts.tsv"
+    output_f_noknown="\${output_dir}${sample_id}.${chrom}.discovered_transcript_counts.noknown.tsv"
     if [[ -e "\${output_f_withknown}" ]]; then
-      grep -v -e "__ambiguous" -e "__no_feature" -e "__not_aligned" \${output_f_withknown} > \${output_f_noknown}
+      grep -v -e "__ambiguous" -e "__no_feature" -e "__not_aligned" "\${output_f_withknown}" > "\${output_f_noknown}"
     fi
     """
 }
