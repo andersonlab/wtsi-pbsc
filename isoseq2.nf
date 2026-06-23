@@ -6,7 +6,7 @@ include {SQANTI3_QC; SQANTI3_FILTER} from './modules/sqanti3.nf'
 ///Subworkflows
 include {BAM_PROCESSING; MAPPING_ONLY; DEDUP_ONLY} from './subworkflows/bam_processing/bam_processing.nf'
 include {DECONVOLUTION} from './subworkflows/deconvolution/deconvolution.nf'
-include {ISOQUANT_TWOPASS_PROCESS} from './subworkflows/isoquant_recipes/isoquant_twopass_process.nf'
+include {ISOQUANT_TWOPASS_WF} from './subworkflows/isoquant_recipes/isoquant_twopass.nf'
 include {PFAM_ANNOTATION_WF} from './subworkflows/pfam_annotation/pfam_annotation.nf'
 
 include {mtx_subset_wf} from './subworkflows/core/mtx_subset.nf'
@@ -41,7 +41,7 @@ workflow full{
   }
   mapped_reads.view()
   if (params.run_mode == 'with_quant'){ 
-    ISOQUANT_TWOPASS_PROCESS(mapped_reads)
+    ISOQUANT_TWOPASS_WF(mapped_reads)
   }
 }
 
@@ -66,7 +66,7 @@ workflow deconvolution_wf {
 
 workflow isoquant_twopass_wf {
     input_ch = 'independent workflow'
-    ISOQUANT_TWOPASS_PROCESS(input_ch)
+    ISOQUANT_TWOPASS_WF(input_ch)
 }
 
 workflow pfam_annotation_wf {
