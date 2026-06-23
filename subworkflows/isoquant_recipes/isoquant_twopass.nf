@@ -202,7 +202,6 @@ workflow isoquant_chrM {
     isoquant_output_novel_names_ch.map{chrom,sample_id,isoquant_output_dir -> [chrom,"${isoquant_output_dir}/${sample_id}.${chrom}.discovered_transcript_grouped_tag_CB_counts.linear.tsv"]}.groupTuple(by:0).set{output_isoform_counts_ch}
     isoquant_output_novel_names_ch.map{chrom,sample_id,isoquant_output_dir -> [chrom,"${isoquant_output_dir}/${sample_id}.${chrom}.discovered_gene_grouped_tag_CB_counts.linear.tsv"]}.groupTuple(by:0).set{output_gene_counts_ch}
     isoquant_output_novel_names_ch.map{chrom,sample_id,isoquant_output_dir -> [chrom,"${isoquant_output_dir}/${sample_id}.${chrom}.transcript_models.gtf"]}.groupTuple(by:0).set{output_existing_gtf_ch}
-    isoquant_output_novel_names_ch.map{chrom,sample_id,isoquant_output_dir -> [chrom,"${isoquant_output_dir}/${sample_id}.${chrom}.extended_annotation.gtf"]}.groupTuple(by:0).set{output_extended_gtf_ch}
     isoquant_output_novel_names_ch.map{chrom,sample_id,isoquant_output_dir -> [chrom,"${isoquant_output_dir}/${sample_id}.${chrom}.corrected_reads.bed.gz"]}.groupTuple(by:0).set{output_corrected_reads_ch}
     isoquant_output_novel_names_ch.map{chrom,sample_id,isoquant_output_dir -> [chrom,"${isoquant_output_dir}/${sample_id}.${chrom}.read_assignments.tsv.gz"]}.groupTuple(by:0).set{output_assignment_reads_ch}
     isoquant_output_novel_names_ch.map{chrom,sample_id,isoquant_output_dir -> [chrom,"${isoquant_output_dir}/${sample_id}.${chrom}.transcript_model_reads.tsv.gz"]}.groupTuple(by:0).set{output_transcriptmodel_reads_ch}
@@ -216,7 +215,6 @@ workflow isoquant_chrM {
     isoform_counts=output_isoform_counts_ch
     gene_counts=output_gene_counts_ch
     existing_gtf=output_existing_gtf_ch
-    extended_gtf=output_extended_gtf_ch
     assignment_reads=output_assignment_reads_ch
     transcriptmodel_reads=output_transcriptmodel_reads_ch
     corrected_reads=output_corrected_reads_ch
@@ -251,7 +249,6 @@ workflow collect_output_wf {
     isoform_counts_ch
     gene_counts_ch
     existing_gtf_ch
-    extended_gtf_ch
     assignment_reads_ch
     transcriptmodel_reads_ch
     corrected_reads_ch
@@ -390,13 +387,9 @@ workflow isoquant_twopass_chunked_wf {
     .map{chrom,firstPass,secondPass -> [chrom,firstPass+secondPass]}
     .set{output_gene_counts_ch}
 
-    //Collecting transcript models GTFs. 
+    //Collecting transcript models GTFs.
     isoquant_output_novel_names_ch.map{chrom,programmaticRegion,isoquant_output_dir -> [groupKey(chrom,chunks),"${isoquant_output_dir}/${programmaticRegion}.transcript_models.gtf"]}.groupTuple(by:0)
     .set{output_existing_gtf_ch}
-
-    //Collecting transcript models extended GTFs. 
-    isoquant_output_novel_names_ch.map{chrom,programmaticRegion,isoquant_output_dir -> [groupKey(chrom,chunks),"${isoquant_output_dir}/${programmaticRegion}.extended_annotation.gtf"]}.groupTuple(by:0)
-    .set{output_extended_gtf_ch}
 
     //Collecting corrected reads beds from first/second passes
     isoquant_firstpass_output_ch.combine(bam_nums_perChr_ch,by:0)
@@ -433,12 +426,11 @@ workflow isoquant_twopass_chunked_wf {
     isoform_counts=output_isoform_counts_ch
     gene_counts=output_gene_counts_ch
     existing_gtf=output_existing_gtf_ch
-    extended_gtf=output_extended_gtf_ch
     assignment_reads=output_assignment_reads_ch
     transcriptmodel_reads=output_transcriptmodel_reads_ch
     corrected_reads=output_corrected_reads_ch
     nums_ch=bam_nums_perChr_ch
-  
+
 }
 
 

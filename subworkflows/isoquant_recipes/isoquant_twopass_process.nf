@@ -84,7 +84,6 @@ workflow ISOQUANT_TWOPASS_PROCESS {
     (nochrM_output_chs.isoform_counts).concat(chrM_output_chs.isoform_counts),
     (nochrM_output_chs.gene_counts).concat(chrM_output_chs.gene_counts),
     (nochrM_output_chs.existing_gtf).concat(chrM_output_chs.existing_gtf),
-    (nochrM_output_chs.extended_gtf).concat(chrM_output_chs.extended_gtf),
     (nochrM_output_chs.assignment_reads).concat(chrM_output_chs.assignment_reads),
     (nochrM_output_chs.transcriptmodel_reads).concat(chrM_output_chs.transcriptmodel_reads),
     (nochrM_output_chs.corrected_reads).concat(chrM_output_chs.corrected_reads)

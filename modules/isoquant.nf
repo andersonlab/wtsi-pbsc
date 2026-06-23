@@ -175,8 +175,7 @@ process run_isoquant_chunked {
     script:
     """
     isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${bams.join(' ')} --labels ${sample_ids.join(' ')} --data_type pacbio_ccs -o ${programmaticRegion} -p ${programmaticRegion} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --clean_start --polya_trimmed all --process_only_chr ${chrom}
-
-
+    rm -f ${programmaticRegion}/${programmaticRegion}/${programmaticRegion}.extended_annotation.gtf
     """
 }
 
@@ -445,6 +444,7 @@ label 'isoquant_firstPass'
   script:
   """
   isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${bam} --labels ${sample_id} --data_type pacbio_ccs -o ${sample_id} -p ${sample_id}.${chrom} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --debug --no_model_construction --polya_trimmed all --process_only_chr ${chrom}
+  rm -f ${sample_id}/${sample_id}.${chrom}/${sample_id}.${chrom}.extended_annotation.gtf
   """
 }
 ////////////////////
@@ -460,6 +460,7 @@ label 'isoquant_firstPass_withmodelconstruction'
   script:
   """
   isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${bam} --labels ${sample_id} --data_type pacbio_ccs -o ${sample_id} -p ${sample_id}.${chrom} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --debug --polya_trimmed all --process_only_chr ${chrom}
+  rm -f ${sample_id}/${sample_id}.${chrom}/${sample_id}.${chrom}.extended_annotation.gtf
   """
 }
 
