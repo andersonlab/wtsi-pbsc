@@ -1,5 +1,4 @@
 include {run_isoquant_firstPass; create_model_construction_bam_perChr; run_isoquant_chunked_merged; replace_novel_names; collect_gtfs} from '../../modules/isoquant.nf'
-include {genedb_perChr_wf} from '../isoquant_components/genedb.nf'
 include {chroms} from '../core/chroms.nf'
 include {run_isoquant_firstPass_withmodelconstruction; replace_novel_names_firsPass_singlenovelname} from '../../modules/isoquant.nf'
 include {collect_counts_as_mtx_perChr as collect_isoform_counts_as_mtx_perChr} from '../../modules/isoquant.nf'
@@ -32,12 +31,8 @@ include {find_mapped_and_unmapped_regions_perChr; suggest_splits_binarySearch_me
 workflow isoquant_twopass_perChr_wf {
   take:
     isoquant_preprocess_bam_perChr_ch
-    chrom_genedb_fasta_chr_ch
   main:
-    isoqunat_firsspass_input_ch=isoquant_preprocess_bam_perChr_ch
-    .combine(chrom_genedb_fasta_chr_ch,by:0)
-
-    isoquant_firstpass_output_ch=run_isoquant_firstPass(isoqunat_firsspass_input_ch)
+    isoquant_firstpass_output_ch=run_isoquant_firstPass(isoquant_preprocess_bam_perChr_ch, params.genedb_f, params.genome_fasta_f, params.genome_fasta_f + ".fai")
     isoquant_firstpass_output_ch
     .map{ chrom,sample_id,isoquant_output_dir,read_assignment_f,bam -> [chrom,sample_id,read_assignment_f,bam] }
     .set{ model_construction_bam_input_ch }
@@ -45,12 +40,9 @@ workflow isoquant_twopass_perChr_wf {
 
     model_construction_bam_ch
     .groupTuple(by:0)
-    .combine(chrom_genedb_fasta_chr_ch,by:0)
     .set{ isoquant_secondpass_input_ch }
 
-    isoquant_secondpass_output_ch=run_isoquant_perChr(isoquant_secondpass_input_ch)
-
-
+    isoquant_secondpass_output_ch=run_isoquant_perChr(isoquant_secondpass_input_ch, params.genedb_f, params.genome_fasta_f)
 
   emit:
     isoquant_secondpass_output_ch
@@ -174,17 +166,13 @@ workflow collect_exon_intron_coutns_perChr_wf {
 workflow isoquant_chrM {
   take:
     isoquant_preprocess_bam_perChr_ch
-    chrom_genedb_fasta_chr_ch
     chrom_sizes_f
   main:
     ///////////////////////////////////////////////////////
     //////////////////A-FIRST PASS/////////////////////////
     ///////////////////////////////////////////////////////
-    isoqunat_firsspass_input_ch=isoquant_preprocess_bam_perChr_ch
-    .combine(chrom_genedb_fasta_chr_ch,by:0)
-    //.filter{tpl -> tpl[1]=="Isogut15045373"}
-    isoqunat_firsspass_input_ch.groupTuple(by:0).map{tpl -> [tpl[0],(tpl[1]).size()]}.set{bam_nums_perChr_ch}
-    isoquant_firstpass_output_ch=run_isoquant_firstPass_withmodelconstruction(isoqunat_firsspass_input_ch)
+    isoquant_preprocess_bam_perChr_ch.groupTuple(by:0).map{tpl -> [tpl[0],(tpl[1]).size()]}.set{bam_nums_perChr_ch}
+    isoquant_firstpass_output_ch=run_isoquant_firstPass_withmodelconstruction(isoquant_preprocess_bam_perChr_ch, params.genedb_f, params.genome_fasta_f, params.genome_fasta_f + ".fai")
 
     isoquant_firstpass_output_ch.map{chrom,sample_id,isoquant_tar,isoquant_input_bam -> [chrom,sample_id,isoquant_tar]}
     .set{replace_novel_names_input_ch}
@@ -292,17 +280,14 @@ workflow collect_output_wf {
 workflow isoquant_twopass_chunked_wf {
   take:
     isoquant_preprocess_bam_perChr_ch
-    chrom_genedb_fasta_chr_ch
     chrom_sizes_f
     chunks
   main:
     ///////////////////////////////////////////////////////
     //////////////////A-FIRST PASS/////////////////////////
     ///////////////////////////////////////////////////////
-    isoqunat_firsspass_input_ch=isoquant_preprocess_bam_perChr_ch
-    .combine(chrom_genedb_fasta_chr_ch,by:0)
-    isoqunat_firsspass_input_ch.groupTuple(by:0).map{tpl -> [tpl[0],(tpl[1]).size()]}.set{bam_nums_perChr_ch}
-    isoquant_firstpass_output_ch=run_isoquant_firstPass(isoqunat_firsspass_input_ch)
+    isoquant_preprocess_bam_perChr_ch.groupTuple(by:0).map{tpl -> [tpl[0],(tpl[1]).size()]}.set{bam_nums_perChr_ch}
+    isoquant_firstpass_output_ch=run_isoquant_firstPass(isoquant_preprocess_bam_perChr_ch, params.genedb_f, params.genome_fasta_f, params.genome_fasta_f + ".fai")
 
     // Group all samples per chromosome, then create one merged model-construction BAM per chrom
     isoquant_firstpass_output_ch
@@ -353,10 +338,9 @@ workflow isoquant_twopass_chunked_wf {
     ///Runnning second pass with merged single-BAM per chunk
     modelconstructionRegionBam
     .map {chrom, bam, bai, formattedRegion, programmaticRegion, counts_f  -> [chrom, bam, bai, formattedRegion, programmaticRegion ] }
-    .combine(chrom_genedb_fasta_chr_ch,by:0)
     .set {isoquant_chunked_input}
 
-    isoquant_secondpass_output_ch=run_isoquant_chunked_merged(isoquant_chunked_input)
+    isoquant_secondpass_output_ch=run_isoquant_chunked_merged(isoquant_chunked_input, params.genedb_f, params.genome_fasta_f, params.genome_fasta_f + ".fai")
 
     
     isoquant_secondpass_output_ch
@@ -494,18 +478,15 @@ workflow ISOQUANT_TWOPASS_WF {
 
     chrom_ch=chroms(chromosomes_list)
 
-    chrom_genedb_fasta_chr_ch=genedb_perChr_wf(chrom_ch,params.gtf_f,params.genome_fasta_f)
     preprocessed_bam_perChr_ch=chrom_ch.combine(fullBam_ch)
 
     //Processing chrM separately
     preprocessed_bam_perChr_ch.filter{chrom,sample_id,bam,bai -> chrom=="chrM"}.set{preprocessed_bam_chrM_ch}
-    chrom_genedb_fasta_chr_ch.filter{chrom,gene_db,fa,fai -> chrom=="chrM"}.set{chrom_genedb_fasta_chrM_ch}
-    chrM_output_chs=isoquant_chrM(preprocessed_bam_chrM_ch,chrom_genedb_fasta_chrM_ch,chrom_sizes_f)
+    chrM_output_chs=isoquant_chrM(preprocessed_bam_chrM_ch,chrom_sizes_f)
 
     //Processing other chromosomes separately
     preprocessed_bam_perChr_ch.filter{chrom,sample_id,bam,bai -> chrom!="chrM"}.set{preprocessed_bam_nochrM_ch}
-    chrom_genedb_fasta_chr_ch.filter{chrom,gene_db,fa,fai -> chrom!="chrM"}.set{chrom_genedb_fasta_nochrM_ch}
-    nochrM_output_chs=isoquant_twopass_chunked_wf(preprocessed_bam_nochrM_ch,chrom_genedb_fasta_nochrM_ch,chrom_sizes_f,params.chunks)
+    nochrM_output_chs=isoquant_twopass_chunked_wf(preprocessed_bam_nochrM_ch,chrom_sizes_f,params.chunks)
 
     //Collecting output: MTX, GTF, reads
     collect_output_wf(

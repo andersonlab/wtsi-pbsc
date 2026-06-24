@@ -464,7 +464,10 @@ label 'isoquant_firstPass'
 tag "${sample_id}__${chrom}"
 
   input:
-      tuple val(chrom), val(sample_id), path(bam), path(bai), path(genedb), path(fasta), path(fai)
+      tuple val(chrom), val(sample_id), path(bam), path(bai)
+      val(genedb)
+      val(fasta)
+      val(fai)
   output:
       tuple val(chrom), val(sample_id), path("${sample_id}.tar"), path(bam)
 
@@ -484,7 +487,10 @@ label 'isoquant_firstPass_withmodelconstruction'
 tag "${sample_id}__${chrom}"
 
   input:
-      tuple val(chrom), val(sample_id), path(bam), path(bai), path(genedb), path(fasta), path(fai)
+      tuple val(chrom), val(sample_id), path(bam), path(bai)
+      val(genedb)
+      val(fasta)
+      val(fai)
   output:
       tuple val(chrom), val(sample_id), path("${sample_id}.tar"), path(bam)
   script:
@@ -636,7 +642,7 @@ tag "${chrom}"
 
   samtools merge -f "${chrom}.model_construction_reads.bam" "\${temp_bams[@]}"
   samtools index "${chrom}.model_construction_reads.bam"
-  printf '%s\0' "\${temp_bams[@]}" "\${firstpass_tars[@]}" "\${bams[@]}" | xargs -0 rm -f
+  printf '%s\0' "\${temp_bams[@]}" "\${firstpass_tars[@]}" | xargs -0 rm -f
   """
 }
 
@@ -646,7 +652,10 @@ process run_isoquant_chunked_merged {
     tag "${programmaticRegion}"
 
     input:
-        tuple val(chrom), path(bam), path(bai), val(formattedRegion), val(programmaticRegion), path(genedb), path(fasta), path(fai)
+        tuple val(chrom), path(bam), path(bai), val(formattedRegion), val(programmaticRegion)
+        val(genedb)
+        val(fasta)
+        val(fai)
 
     output:
         tuple val(chrom), val(programmaticRegion), path("${programmaticRegion}.tar")
