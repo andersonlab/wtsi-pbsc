@@ -321,6 +321,7 @@ process collect_counts_as_mtx_perChr {
 
     mkdir -p ${chrom}
     python ${baseDir}/scripts/convert_linear_counts_to_mtx.py -i "\${count_files[@]}" -d ${chrom}/
+    printf '%s\0' "\${count_files[@]}" | xargs -0 rm -f
     """
 
 }
@@ -635,6 +636,7 @@ tag "${chrom}"
 
   samtools merge -f "${chrom}.model_construction_reads.bam" "\${temp_bams[@]}"
   samtools index "${chrom}.model_construction_reads.bam"
+  printf '%s\0' "\${temp_bams[@]}" "\${firstpass_tars[@]}" "\${bams[@]}" | xargs -0 rm -f
   """
 }
 
