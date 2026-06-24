@@ -181,18 +181,19 @@ process run_isoquant_chunked {
 
 process replace_novel_names {
     label 'micro_job'
-
+    tag "${programmaticRegion}"
 
     input:
-      tuple val(chrom), val(programmaticRegion), path(isoquant_output)
+      tuple val(chrom), val(programmaticRegion), path(isoquant_tar)
 
     output:
-      tuple val(chrom), val(programmaticRegion), path("${programmaticRegion}_renamed/")
+      tuple val(chrom), val(programmaticRegion), path("${programmaticRegion}_renamed.tar")
 
 
     script:
     """
-    input_dir=${isoquant_output}/${programmaticRegion}/
+    tar -xzf ${isoquant_tar}
+    input_dir=${programmaticRegion}/${programmaticRegion}/
     output_dir=${programmaticRegion}_renamed/
     mkdir -p \$output_dir
 
@@ -263,6 +264,10 @@ process replace_novel_names {
     if [[ -e "\${output_f_withknown}" ]]; then
       grep -v -e "^ENST" -e "__ambiguous" -e "__no_feature" -e "__not_aligned" "\${output_f_withknown}" > "\${output_f_noknown}"
     fi
+
+    # --dereference resolves symlinks created for unchanged files so the tar contains real content
+    tar --dereference -czf ${programmaticRegion}_renamed.tar ${programmaticRegion}_renamed/
+    rm -rf ${programmaticRegion}_renamed/ ${programmaticRegion}/
     """
 }
 
@@ -288,10 +293,12 @@ process collect_counts_as_mtx {
 
 process collect_counts_as_mtx_perChr {
     label 'counts_collect'
+    tag "${chrom}"
     publishDir "${publish_dir}", mode: 'copy', overwrite: true
 
     input:
-        tuple val(chrom), path(isoquant_linear_count_files)
+        // tars: one tar per sample/chunk; patterns: one wildcard per tar matching the count file inside
+        tuple val(chrom), path(tars), val(patterns)
         val(publish_dir)
 
     output:
@@ -302,15 +309,25 @@ process collect_counts_as_mtx_perChr {
 
     script:
     """
+    tars=(${tars.join(' ')})
+    patterns=(${patterns.join(' ')})
+    count_files=()
+
+    for i in \$(seq 0 \$((\${#tars[@]}-1))); do
+      out="count_\${i}.tsv"
+      tar -xzf "\${tars[\$i]}" -O --wildcards "\${patterns[\$i]}" > "\${out}"
+      count_files+=("\${out}")
+    done
 
     mkdir -p ${chrom}
-    python ${baseDir}/scripts/convert_linear_counts_to_mtx.py -i ${isoquant_linear_count_files.join(' ')} -d ${chrom}/
+    python ${baseDir}/scripts/convert_linear_counts_to_mtx.py -i "\${count_files[@]}" -d ${chrom}/
     """
 
 }
 
 process collect_mtx_as_h5ad {
     label 'counts_collect'
+    tag "${prefix}"
     publishDir "${publish_dir}", mode: 'copy', overwrite: true
 
     input:
@@ -332,7 +349,7 @@ process collect_gtfs {
     label 'collect_gtfs'
     publishDir "${publish_dir}", mode: 'copy', overwrite: true
     input:
-        path(query_gtf_files)
+        path(renamed_tars)
         path(ref_gtf_f)
         path(mtx_isoform_fs, stageAs: 'isoforms/isoforms?.tsv')
         val(publish_dir)
@@ -346,10 +363,18 @@ process collect_gtfs {
 
     script:
     """
-    query_gft_fs=(${query_gtf_files.join(' ')})
+    renamed_tars=(${renamed_tars.join(' ')})
 
     for f in isoforms/isoforms*.tsv; do cut -f1 \$f; done | sort | uniq > all_features.csv
-    for f in "\${query_gft_fs[@]}"; do echo \$f; done > query_gtf_files.txt
+
+    gtf_files=()
+    for i in \$(seq 0 \$((\${#renamed_tars[@]}-1))); do
+      out="gtf_\${i}.gtf"
+      tar -xzf "\${renamed_tars[\$i]}" -O --wildcards "*.transcript_models.gtf" > "\${out}"
+      gtf_files+=("\${out}")
+    done
+
+    for f in "\${gtf_files[@]}"; do echo \$f; done > query_gtf_files.txt
 
     python ${baseDir}/scripts/collect_gtfs.py -Q query_gtf_files.txt -r ${ref_gtf_f} -o extended_annotation.gtf
     echo "Finished collecting extended annotation GTF"
@@ -382,6 +407,7 @@ process format_intron_exon_grouped_counts {
 }
 process format_intron_exon_grouped_counts_perChr {
     label 'small_job'
+    tag "${prefix}"
 
     input:
         tuple val(chrom), val(prefix), path(input_f)
@@ -434,17 +460,19 @@ process run_isoquant_perChr {
 /////////Two-pass IsoQuant///////////
 process run_isoquant_firstPass {
 label 'isoquant_firstPass'
+tag "${sample_id}__${chrom}"
 
   input:
       tuple val(chrom), val(sample_id), path(bam), path(bai), path(genedb), path(fasta), path(fai)
   output:
-      tuple val(chrom), val(sample_id), path("${sample_id}/"),path("${sample_id}/${sample_id}.${chrom}/${sample_id}.${chrom}.read_assignments.tsv.gz"), path(bam)
-
+      tuple val(chrom), val(sample_id), path("${sample_id}.tar"), path(bam)
 
   script:
   """
   isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${bam} --labels ${sample_id} --data_type pacbio_ccs -o ${sample_id} -p ${sample_id}.${chrom} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --no_model_construction --polya_trimmed all --process_only_chr ${chrom}
   rm -f ${sample_id}/${sample_id}.${chrom}/${sample_id}.${chrom}.extended_annotation.gtf
+  tar -czf ${sample_id}.tar ${sample_id}/
+  rm -rf ${sample_id}/
   """
 }
 ////////////////////
@@ -452,32 +480,36 @@ label 'isoquant_firstPass'
 ////////////////////
 process run_isoquant_firstPass_withmodelconstruction {
 label 'isoquant_firstPass_withmodelconstruction'
+tag "${sample_id}__${chrom}"
 
   input:
       tuple val(chrom), val(sample_id), path(bam), path(bai), path(genedb), path(fasta), path(fai)
   output:
-      tuple val(chrom), val(sample_id), path("${sample_id}/"),path("${sample_id}/${sample_id}.${chrom}/${sample_id}.${chrom}.read_assignments.tsv.gz"), path(bam)
+      tuple val(chrom), val(sample_id), path("${sample_id}.tar"), path(bam)
   script:
   """
   isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${bam} --labels ${sample_id} --data_type pacbio_ccs -o ${sample_id} -p ${sample_id}.${chrom} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --polya_trimmed all --process_only_chr ${chrom}
   rm -f ${sample_id}/${sample_id}.${chrom}/${sample_id}.${chrom}.extended_annotation.gtf
+  tar -czf ${sample_id}.tar ${sample_id}/
+  rm -rf ${sample_id}/
   """
 }
 
 process replace_novel_names_firsPass_singlenovelname {
     label 'micro_job'
-
+    tag "${sample_id}__${chrom}"
 
     input:
-      tuple val(chrom), val(sample_id), path(isoquant_output)
+      tuple val(chrom), val(sample_id), path(isoquant_tar)
 
     output:
-        tuple val(chrom), val(sample_id), path("${sample_id}.${chrom}_renamed/")
+        tuple val(chrom), val(sample_id), path("${sample_id}.${chrom}_renamed.tar")
 
 
     script:
     """
-    input_dir=${isoquant_output}/${sample_id}.${chrom}/
+    tar -xzf ${isoquant_tar}
+    input_dir=${sample_id}/${sample_id}.${chrom}/
     output_dir=${sample_id}.${chrom}_renamed/
     mkdir -p \$output_dir
 
@@ -542,6 +574,10 @@ process replace_novel_names_firsPass_singlenovelname {
     if [[ -e "\${output_f_withknown}" ]]; then
       grep -v -e "__ambiguous" -e "__no_feature" -e "__not_aligned" "\${output_f_withknown}" > "\${output_f_noknown}"
     fi
+
+    # --dereference resolves symlinks created for unchanged files so the tar contains real content
+    tar --dereference -czf ${sample_id}.${chrom}_renamed.tar ${sample_id}.${chrom}_renamed/
+    rm -rf ${sample_id}.${chrom}_renamed/ ${sample_id}/
     """
 }
 /////////////////////////////
@@ -571,27 +607,28 @@ label 'mini_job'
 
 process create_model_construction_bam_perChr {
 label 'medium_job'
+tag "${chrom}"
 
   input:
-      tuple val(chrom), val(sample_ids), path(read_assignment_fs), path(bams)
+      tuple val(chrom), val(sample_ids), path(firstpass_tars), path(bams)
   output:
       tuple val(chrom), path("${chrom}.model_construction_reads.bam"), path("${chrom}.model_construction_reads.bam.bai")
   script:
   """
   sample_ids=(${sample_ids.join(' ')})
-  read_assignment_fs=(${read_assignment_fs.join(' ')})
+  firstpass_tars=(${firstpass_tars.join(' ')})
   bams=(${bams.join(' ')})
 
   temp_bams=()
   for i in \$(seq 0 \$((\${#sample_ids[@]}-1))); do
     sample_id="\${sample_ids[\$i]}"
-    read_assignment_f="\${read_assignment_fs[\$i]}"
+    tar_f="\${firstpass_tars[\$i]}"
     bam="\${bams[\$i]}"
 
     reads_list="\${sample_id}.${chrom}.model_construction_reads.txt"
     temp_bam="\${sample_id}.${chrom}.model_construction_reads.tmp.bam"
 
-    zcat "\${read_assignment_f}" | tail -n+4 | awk '{if((\$6=="intergenic")||(\$6=="inconsistent_ambiguous")||(\$6=="inconsistent")||(\$6=="inconsistent_non_intronic"))print \$1}' | sort | uniq > "\${reads_list}"
+    tar -xzf "\${tar_f}" -O --wildcards "*.read_assignments.tsv.gz" | zcat | tail -n+4 | awk '{if((\$6=="intergenic")||(\$6=="inconsistent_ambiguous")||(\$6=="inconsistent")||(\$6=="inconsistent_non_intronic"))print \$1}' | sort | uniq > "\${reads_list}"
     samtools view -N "\${reads_list}" -h -bo "\${temp_bam}" "\${bam}"
     temp_bams+=("\${temp_bam}")
   done
@@ -604,17 +641,20 @@ label 'medium_job'
 
 process run_isoquant_chunked_merged {
     label 'isoquant_chunked'
+    tag "${programmaticRegion}"
 
     input:
         tuple val(chrom), path(bam), path(bai), val(formattedRegion), val(programmaticRegion), path(genedb), path(fasta), path(fai)
 
     output:
-        tuple val(chrom), val(programmaticRegion), path("${programmaticRegion}/")
+        tuple val(chrom), val(programmaticRegion), path("${programmaticRegion}.tar")
 
     script:
     """
     isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${bam} --labels ${programmaticRegion} --data_type pacbio_ccs -o ${programmaticRegion} -p ${programmaticRegion} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --clean_start --polya_trimmed all --process_only_chr ${chrom}
     rm -f ${programmaticRegion}/${programmaticRegion}/${programmaticRegion}.extended_annotation.gtf
+    tar -czf ${programmaticRegion}.tar ${programmaticRegion}/
+    rm -rf ${programmaticRegion}/
     """
 }
 
