@@ -60,6 +60,67 @@ process suggest_splits_binarySearch {
 }
 
 
+process find_mapped_and_unmapped_regions_perChr {
+  label 'medium_job'
+
+  input:
+      tuple val(chrom), path(bam), path(bai)
+      path chrom_sizes_f
+  output:
+      tuple val(chrom), path("split_points_${chrom}.bed"), emit: unmapped_bed
+      tuple val(chrom), path("mapped_regions_${chrom}.bed"), emit: mapped_bed
+  script:
+  """
+  mapped_regions_f="mapped_regions_${chrom}.bed"
+  unmapped_regions_f="split_points_${chrom}.bed"
+
+  samtools view -h ${bam} ${chrom} | bedtools bamtobed -i - | bedtools merge > \$mapped_regions_f
+  grep -w ${chrom} ${chrom_sizes_f} | bedtools complement -i \$mapped_regions_f -g stdin > \$unmapped_regions_f
+  """
+}
+
+
+process suggest_splits_binarySearch_merged {
+  label 'mini_job'
+
+  input:
+    tuple val(chrom), path(bam), path(bai), path(unmapped_regions_bed)
+    val chunks
+    path chrom_sizes_f
+  output:
+    tuple val(chrom), path("suggested_splits_onebased_coords.${chrom}.bed"), path("suggested_splits_onebased_coords.${chrom}.list"), path("suggested_splits.${chrom}.bed")
+  script:
+  """
+  echo "${bam}" > bams.txt
+  python ${baseDir}/dev/split_chr.py  -c ${chunks} -b bams.txt -r "${chrom}" -s ${unmapped_regions_bed} -z ${chrom_sizes_f} -o suggested_splits."${chrom}".bed
+  awk -F "\t" '{print \$1"\t"(\$2+1)"\t"\$3}' suggested_splits."${chrom}".bed > suggested_splits_onebased_coords."${chrom}".bed
+  awk -F "\t" '{print \$1":"\$2"-"\$3}' suggested_splits_onebased_coords."${chrom}".bed  > suggested_splits_onebased_coords."${chrom}".list
+  rm bams.txt
+  """
+}
+
+
+process split_bam_perChunk {
+  label 'micro_multithread_job'
+  input:
+    tuple val(chrom), path(bam), path(bai), val(formattedRegion), val(programmaticRegion)
+    val(suffix)
+  output:
+    tuple val(chrom), path("${programmaticRegion}.${suffix}.bam"), path("${programmaticRegion}.${suffix}.bam.bai"), val(formattedRegion), val(programmaticRegion), path("${programmaticRegion}_total_count.csv")
+  script:
+  """
+  output_bam="${programmaticRegion}.${suffix}.bam"
+
+  samtools view -@ ${task.cpus} -h "${bam}" "${formattedRegion}" |\
+  awk -v chrom="${chrom}" '{ if (\$1=="@SQ") {if(\$2=="SN:"chrom) {print \$0}} else{print \$0} }' |\
+  samtools view -@ ${task.cpus} -h -bo "\${output_bam}" -
+  samtools index -@ ${task.cpus} "\${output_bam}"
+  count=\$(samtools view -@ ${task.cpus} -c "\${output_bam}")
+  echo "${formattedRegion},\${count}" > "${programmaticRegion}_total_count.csv"
+  """
+}
+
+
 process split_bams_perChunk {
   label 'micro_multithread_job'
   input:

@@ -569,6 +569,56 @@ label 'mini_job'
 }
 
 
+process create_model_construction_bam_perChr {
+label 'medium_job'
+
+  input:
+      tuple val(chrom), val(sample_ids), path(read_assignment_fs), path(bams)
+  output:
+      tuple val(chrom), path("${chrom}.model_construction_reads.bam"), path("${chrom}.model_construction_reads.bam.bai")
+  script:
+  """
+  sample_ids=(${sample_ids.join(' ')})
+  read_assignment_fs=(${read_assignment_fs.join(' ')})
+  bams=(${bams.join(' ')})
+
+  temp_bams=()
+  for i in \$(seq 0 \$((\${#sample_ids[@]}-1))); do
+    sample_id="\${sample_ids[\$i]}"
+    read_assignment_f="\${read_assignment_fs[\$i]}"
+    bam="\${bams[\$i]}"
+
+    reads_list="\${sample_id}.${chrom}.model_construction_reads.txt"
+    temp_bam="\${sample_id}.${chrom}.model_construction_reads.tmp.bam"
+
+    zcat "\${read_assignment_f}" | tail -n+4 | awk '{if((\$6=="intergenic")||(\$6=="inconsistent_ambiguous")||(\$6=="inconsistent")||(\$6=="inconsistent_non_intronic"))print \$1}' | sort | uniq > "\${reads_list}"
+    samtools view -N "\${reads_list}" -h -bo "\${temp_bam}" "\${bam}"
+    temp_bams+=("\${temp_bam}")
+  done
+
+  samtools merge -f "${chrom}.model_construction_reads.bam" "\${temp_bams[@]}"
+  samtools index "${chrom}.model_construction_reads.bam"
+  """
+}
+
+
+process run_isoquant_chunked_merged {
+    label 'isoquant_chunked'
+
+    input:
+        tuple val(chrom), path(bam), path(bai), val(formattedRegion), val(programmaticRegion), path(genedb), path(fasta), path(fai)
+
+    output:
+        tuple val(chrom), val(programmaticRegion), path("${programmaticRegion}/")
+
+    script:
+    """
+    isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${bam} --labels ${programmaticRegion} --data_type pacbio_ccs -o ${programmaticRegion} -p ${programmaticRegion} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --clean_start --polya_trimmed all --process_only_chr ${chrom}
+    rm -f ${programmaticRegion}/${programmaticRegion}/${programmaticRegion}.extended_annotation.gtf
+    """
+}
+
+
 process run_isoquant_secondPass {
 label 'mini_job_local'
 

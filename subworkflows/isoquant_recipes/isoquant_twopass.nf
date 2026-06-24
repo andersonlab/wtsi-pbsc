@@ -1,4 +1,4 @@
-include {run_isoquant_firstPass; create_model_construction_bam; run_isoquant_chunked; replace_novel_names; collect_gtfs} from '../../modules/isoquant.nf'
+include {run_isoquant_firstPass; create_model_construction_bam_perChr; run_isoquant_chunked_merged; replace_novel_names; collect_gtfs} from '../../modules/isoquant.nf'
 include {genedb_perChr_wf} from '../isoquant_components/genedb.nf'
 include {chroms} from '../core/chroms.nf'
 include {run_isoquant_firstPass_withmodelconstruction; replace_novel_names_firsPass_singlenovelname} from '../../modules/isoquant.nf'
@@ -27,7 +27,7 @@ include {format_intron_exon_grouped_counts_perChr as format_intron_grouped_count
 include {format_intron_exon_grouped_counts_perChr as format_exon_grouped_counts_firstPass_perChr} from '../../modules/isoquant.nf'
 include {format_intron_exon_grouped_counts_perChr as format_exon_grouped_counts_secondPass_perChr} from '../../modules/isoquant.nf'
 
-include {find_mapped_and_unmapped_regions_per_sampleChrom; acrossSamples_mapped_unmapped_regions_perChr; suggest_splits_binarySearch; split_bams_perChunk} from '../../modules/smartSplit.nf'
+include {find_mapped_and_unmapped_regions_perChr; suggest_splits_binarySearch_merged; split_bam_perChunk} from '../../modules/smartSplit.nf'
 
 workflow isoquant_twopass_perChr_wf {
   take:
@@ -285,10 +285,16 @@ workflow isoquant_twopass_chunked_wf {
     .combine(chrom_genedb_fasta_chr_ch,by:0)
     isoqunat_firsspass_input_ch.groupTuple(by:0).map{tpl -> [tpl[0],(tpl[1]).size()]}.set{bam_nums_perChr_ch}
     isoquant_firstpass_output_ch=run_isoquant_firstPass(isoqunat_firsspass_input_ch)
+
+    // Group all samples per chromosome, then create one merged model-construction BAM per chrom
     isoquant_firstpass_output_ch
     .map{ chrom,sample_id,isoquant_output_dir,read_assignment_f,bam -> [chrom,sample_id,read_assignment_f,bam] }
+    .combine(bam_nums_perChr_ch,by:0)
+    .map{ chrom,sample_id,read_assignment_f,bam,n -> [groupKey(chrom,n),sample_id,read_assignment_f,bam] }
+    .groupTuple(by:0)
     .set{ model_construction_bam_input_ch }
-    model_construction_bam_ch=create_model_construction_bam(model_construction_bam_input_ch)
+    model_construction_bam_ch=create_model_construction_bam_perChr(model_construction_bam_input_ch)
+    // model_construction_bam_ch: [chrom, merged_bam, merged_bai]
     ////////////////////////////////////////////////////////////
     //////////////////END: A-FIRST PASS/////////////////////////
     ////////////////////////////////////////////////////////////
@@ -296,29 +302,14 @@ workflow isoquant_twopass_chunked_wf {
     ///////////////////////////////////////////////////////
     //////////////////B-SECOND PASS/////////////////////////
     ///////////////////////////////////////////////////////
-    ///sharding
-    mapped_unmapped_regions_tuple_ch=find_mapped_and_unmapped_regions_per_sampleChrom(model_construction_bam_ch,chrom_sizes_f)
+    ///sharding: one job per chrom on the merged BAM replaces the per-sample find + acrossSamples intersect
+    mapped_unmapped_ch=find_mapped_and_unmapped_regions_perChr(model_construction_bam_ch,chrom_sizes_f)
 
-    ///adding sample size to the group key before grouping tuples so that generation of mapped_unmapped_regions_groupedTuple_ch is not blocked untill all samples/chrom is finished
-    mapped_unmapped_regions_tuple_ch
-    .combine(bam_nums_perChr_ch,by:0)
-    .map{chrom,sample_id,unmapped_bed,mapped_bed,chrom_sample_size -> [groupKey(chrom,chrom_sample_size),sample_id,unmapped_bed,mapped_bed]}
-    .groupTuple(by:0)
-    .set{mapped_unmapped_regions_groupedTuple_ch}
-
-    ///findint intersection of unmapped regions across samples per chromosome
-    acrossSamples_mapped_unmapped_regions_perChr_ch=acrossSamples_mapped_unmapped_regions_perChr(mapped_unmapped_regions_groupedTuple_ch)
-
-
-    /// Merging grouped BAM tuples with unmapped BED files (again adding size as groupkey)
     model_construction_bam_ch
-    .combine(bam_nums_perChr_ch,by:0)
-    .map{chrom, sample_id,read_assignment_f, bam, chrom_sample_size -> [groupKey(chrom,chrom_sample_size),sample_id,read_assignment_f, bam]}
-    .groupTuple(by:0)
-    .combine(acrossSamples_mapped_unmapped_regions_perChr_ch.unmapped_bed,by:0)
+    .combine(mapped_unmapped_ch.unmapped_bed,by:0)
     .set { modelconstructionBam_unmappedbed_tuples_ch }
 
-    suggested_splits_ch=suggest_splits_binarySearch(modelconstructionBam_unmappedbed_tuples_ch,chunks,chrom_sizes_f)
+    suggested_splits_ch=suggest_splits_binarySearch_merged(modelconstructionBam_unmappedbed_tuples_ch,chunks,chrom_sizes_f)
 
 
     suggested_splits_ch.flatMap { tuple ->
@@ -334,23 +325,20 @@ workflow isoquant_twopass_chunked_wf {
             }
     }.set {chrom_region_ch}
 
-    /// Splitting BAMs according to suggested regions
+    /// Splitting merged BAM per chunk
     model_construction_bam_ch
-      .combine(bam_nums_perChr_ch,by:0)
-      .map{chrom, sample_id,read_assignment_f, bam, chrom_sample_size -> [groupKey(chrom,chrom_sample_size),sample_id,read_assignment_f, bam]}
-      .groupTuple(by:0)
       .combine(chrom_region_ch,by:0)
-      .set {modelconstructionBam_Region_groupedTuple_ch}
-    modelconstructionRegionBam=split_bams_perChunk(modelconstructionBam_Region_groupedTuple_ch,"model_construction_reads")
+      .set {modelconstructionBam_Region_tuple_ch}
+    modelconstructionRegionBam=split_bam_perChunk(modelconstructionBam_Region_tuple_ch,"model_construction_reads")
 
 
-    ///Runnning second pass
+    ///Runnning second pass with merged single-BAM per chunk
     modelconstructionRegionBam
-    .map {chrom, sample_ids, bams, bais, formattedRegion, programmaticRegion, counts_f  -> [chrom, sample_ids, bams, bais, formattedRegion, programmaticRegion ] }
+    .map {chrom, bam, bai, formattedRegion, programmaticRegion, counts_f  -> [chrom, bam, bai, formattedRegion, programmaticRegion ] }
     .combine(chrom_genedb_fasta_chr_ch,by:0)
     .set {isoquant_chunked_input}
 
-    isoquant_secondpass_output_ch=run_isoquant_chunked(isoquant_chunked_input)
+    isoquant_secondpass_output_ch=run_isoquant_chunked_merged(isoquant_chunked_input)
 
     
     isoquant_secondpass_output_ch
