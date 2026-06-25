@@ -298,7 +298,9 @@ process collect_counts_as_mtx_perChr {
 
     input:
         // tars: one tar per sample/chunk; patterns: one wildcard per tar matching the count file inside
-        tuple val(chrom), path(tars), val(patterns)
+        // needs_chr_filter: parallel boolean list — true for per-sample whole-genome tars (filter rows
+        //   to this chromosome using read_assignments), false for already-chromosome-scoped tars
+        tuple val(chrom), path(tars), val(patterns), val(needs_chr_filter)
         val(publish_dir)
 
     output:
@@ -311,11 +313,32 @@ process collect_counts_as_mtx_perChr {
     """
     tars=(${tars.join(' ')})
     patterns=(${patterns.join(' ')})
+    needs_filter=(${needs_chr_filter.join(' ')})
     count_files=()
 
     for i in \$(seq 0 \$((\${#tars[@]}-1))); do
       out="count_\${i}.tsv"
-      tar -xzf "\${tars[\$i]}" -O --wildcards "\${patterns[\$i]}" > "\${out}"
+      if [ "\${needs_filter[\$i]}" = "true" ]; then
+        chr_features="chr_features_\${i}.txt"
+        tar -xzf "\${tars[\$i]}" -O --wildcards "*.read_assignments.tsv.gz" | zcat | \
+          awk -v chr="${chrom}" '
+            BEGIN { FS="\\t" }
+            /^#/ { next }
+            !header_parsed {
+              for (i=1;i<=NF;i++) { if (\$i=="chr") chr_col=i; if (\$i=="isoform_id") id_col=i; if (\$i=="gene_id") gene_col=i }
+              header_parsed=1; next
+            }
+            chr_col>0 && \$chr_col==chr {
+              if (id_col>0 && \$id_col!="" && \$id_col!=".") print \$id_col
+              if (gene_col>0 && \$gene_col!="" && \$gene_col!=".") print \$gene_col
+            }
+          ' | sort | uniq > "\${chr_features}"
+        tar -xzf "\${tars[\$i]}" -O --wildcards "\${patterns[\$i]}" > "\${out}.raw"
+        awk 'NR==FNR{a[\$1]; next} FNR==1 || (\$1 in a)' "\${chr_features}" "\${out}.raw" > "\${out}"
+        rm "\${chr_features}" "\${out}.raw"
+      else
+        tar -xzf "\${tars[\$i]}" -O --wildcards "\${patterns[\$i]}" > "\${out}"
+      fi
       count_files+=("\${out}")
     done
 
@@ -479,6 +502,27 @@ tag "${sample_id}__${chrom}"
   rm -rf ${sample_id}/
   """
 }
+process run_isoquant_firstPass_perSample {
+label 'isoquant_firstPass_perSample'
+tag "${sample_id}"
+
+  input:
+      tuple val(sample_id), path(bam), path(bai)
+      val(genedb)
+      val(fasta)
+      val(fai)
+  output:
+      tuple val(sample_id), path("${sample_id}.tar"), path(bam)
+
+  script:
+  """
+  isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${bam} --labels ${sample_id} --data_type pacbio_ccs -o ${sample_id} -p ${sample_id} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --no_model_construction --polya_trimmed all
+  rm -f ${sample_id}/${sample_id}/${sample_id}.extended_annotation.gtf
+  tar -czf ${sample_id}.tar ${sample_id}/
+  rm -rf ${sample_id}/
+  """
+}
+
 ////////////////////
 ///chrM processes///
 ////////////////////
@@ -635,7 +679,16 @@ tag "${chrom}"
     reads_list="\${sample_id}.${chrom}.model_construction_reads.txt"
     temp_bam="\${sample_id}.${chrom}.model_construction_reads.tmp.bam"
 
-    tar -xzf "\${tar_f}" -O --wildcards "*.read_assignments.tsv.gz" | zcat | tail -n+4 | awk '{if((\$6=="intergenic")||(\$6=="inconsistent_ambiguous")||(\$6=="inconsistent")||(\$6=="inconsistent_non_intronic"))print \$1}' | sort | uniq > "\${reads_list}"
+    tar -xzf "\${tar_f}" -O --wildcards "*.read_assignments.tsv.gz" | zcat | \
+      awk -v chr="${chrom}" '
+        BEGIN { FS="\\t" }
+        /^#/ { next }
+        !header_parsed {
+          for (i=1;i<=NF;i++) { if (\$i=="chr") chr_col=i; if (\$i=="assignment_type") type_col=i }
+          header_parsed=1; next
+        }
+        chr_col>0 && type_col>0 && \$chr_col==chr && (\$type_col=="intergenic"||\$type_col=="inconsistent_ambiguous"||\$type_col=="inconsistent"||\$type_col=="inconsistent_non_intronic") { print \$1 }
+      ' | sort | uniq > "\${reads_list}"
     samtools view -N "\${reads_list}" -h -bo "\${temp_bam}" "\${bam}"
     temp_bams+=("\${temp_bam}")
   done
