@@ -496,7 +496,13 @@ tag "${sample_id}__${chrom}"
 
   script:
   """
-  isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${bam} --labels ${sample_id} --data_type pacbio_ccs -o ${sample_id} -p ${sample_id}.${chrom} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --no_model_construction --polya_trimmed all --process_only_chr ${chrom}
+  if [ "${params.local_ref_cache}" = "true" ]; then
+    readarray -t _refs < <(bash ${baseDir}/scripts/cache_isoquant_refs.sh "${genedb}" "${fasta}")
+    DB_LOCAL="\${_refs[0]}"; FA_LOCAL="\${_refs[1]}"
+  else
+    DB_LOCAL="${genedb}"; FA_LOCAL="${fasta}"
+  fi
+  isoquant.py --reference \${FA_LOCAL} --genedb \${DB_LOCAL} --complete_genedb --sqanti_output --bam ${bam} --labels ${sample_id} --data_type pacbio_ccs -o ${sample_id} -p ${sample_id}.${chrom} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --no_model_construction --polya_trimmed all --process_only_chr ${chrom}
   rm -f ${sample_id}/${sample_id}.${chrom}/${sample_id}.${chrom}.extended_annotation.gtf
   tar -czf ${sample_id}.tar ${sample_id}/
   rm -rf ${sample_id}/
@@ -516,7 +522,13 @@ tag "${sample_id}"
 
   script:
   """
-  isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${bam} --labels ${sample_id} --data_type pacbio_ccs -o ${sample_id} -p ${sample_id} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --no_model_construction --polya_trimmed all
+  if [ "${params.local_ref_cache}" = "true" ]; then
+    readarray -t _refs < <(bash ${baseDir}/scripts/cache_isoquant_refs.sh "${genedb}" "${fasta}")
+    DB_LOCAL="\${_refs[0]}"; FA_LOCAL="\${_refs[1]}"
+  else
+    DB_LOCAL="${genedb}"; FA_LOCAL="${fasta}"
+  fi
+  isoquant.py --reference \${FA_LOCAL} --genedb \${DB_LOCAL} --complete_genedb --sqanti_output --bam ${bam} --labels ${sample_id} --data_type pacbio_ccs -o ${sample_id} -p ${sample_id} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --no_model_construction --polya_trimmed all --discard_chr chrM
   rm -f ${sample_id}/${sample_id}/${sample_id}.extended_annotation.gtf
   tar -czf ${sample_id}.tar ${sample_id}/
   rm -rf ${sample_id}/
@@ -539,7 +551,13 @@ tag "${sample_id}__${chrom}"
       tuple val(chrom), val(sample_id), path("${sample_id}.tar"), path(bam)
   script:
   """
-  isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${bam} --labels ${sample_id} --data_type pacbio_ccs -o ${sample_id} -p ${sample_id}.${chrom} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --polya_trimmed all --process_only_chr ${chrom}
+  if [ "${params.local_ref_cache}" = "true" ]; then
+    readarray -t _refs < <(bash ${baseDir}/scripts/cache_isoquant_refs.sh "${genedb}" "${fasta}")
+    DB_LOCAL="\${_refs[0]}"; FA_LOCAL="\${_refs[1]}"
+  else
+    DB_LOCAL="${genedb}"; FA_LOCAL="${fasta}"
+  fi
+  isoquant.py --reference \${FA_LOCAL} --genedb \${DB_LOCAL} --complete_genedb --sqanti_output --bam ${bam} --labels ${sample_id} --data_type pacbio_ccs -o ${sample_id} -p ${sample_id}.${chrom} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --polya_trimmed all --process_only_chr ${chrom}
   rm -f ${sample_id}/${sample_id}.${chrom}/${sample_id}.${chrom}.extended_annotation.gtf
   tar -czf ${sample_id}.tar ${sample_id}/
   rm -rf ${sample_id}/
@@ -715,7 +733,13 @@ process run_isoquant_chunked_merged {
 
     script:
     """
-    isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${bam} --labels ${programmaticRegion} --data_type pacbio_ccs -o ${programmaticRegion} -p ${programmaticRegion} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --clean_start --polya_trimmed all --process_only_chr ${chrom}
+    if [ "${params.local_ref_cache}" = "true" ]; then
+      readarray -t _refs < <(bash ${baseDir}/scripts/cache_isoquant_refs.sh "${genedb}" "${fasta}")
+      DB_LOCAL="\${_refs[0]}"; FA_LOCAL="\${_refs[1]}"
+    else
+      DB_LOCAL="${genedb}"; FA_LOCAL="${fasta}"
+    fi
+    isoquant.py --reference \${FA_LOCAL} --genedb \${DB_LOCAL} --complete_genedb --sqanti_output --bam ${bam} --labels ${programmaticRegion} --data_type pacbio_ccs -o ${programmaticRegion} -p ${programmaticRegion} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --clean_start --polya_trimmed all --process_only_chr ${chrom}
     rm -f ${programmaticRegion}/${programmaticRegion}/${programmaticRegion}.extended_annotation.gtf
     tar -czf ${programmaticRegion}.tar ${programmaticRegion}/
     rm -rf ${programmaticRegion}/
