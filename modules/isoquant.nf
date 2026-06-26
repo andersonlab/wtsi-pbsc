@@ -713,7 +713,7 @@ tag "${chrom}"
 
   samtools merge -f "${chrom}.model_construction_reads.bam" "\${temp_bams[@]}"
   samtools index "${chrom}.model_construction_reads.bam"
-  printf '%s\0' "\${temp_bams[@]}" "\${firstpass_tars[@]}" | xargs -0 rm -f
+  printf '%s\0' "\${temp_bams[@]}" | xargs -0 rm -f
   """
 }
 
