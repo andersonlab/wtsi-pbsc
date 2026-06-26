@@ -564,7 +564,7 @@ tag "${sample_id}__${chrom}"
   """
 }
 
-process replace_novel_names_firsPass_singlenovelname {
+process replace_novel_names_firstPass_singlenovelname {
     label 'micro_job'
     tag "${sample_id}__${chrom}"
 
@@ -707,12 +707,12 @@ tag "${chrom}"
         }
         chr_col>0 && type_col>0 && \$chr_col==chr && (\$type_col=="intergenic"||\$type_col=="inconsistent_ambiguous"||\$type_col=="inconsistent"||\$type_col=="inconsistent_non_intronic") { print \$1 }
       ' | sort | uniq > "\${reads_list}"
-    samtools view -N "\${reads_list}" -h -bo "\${temp_bam}" "\${bam}"
+    samtools view -@ ${task.cpus} -N "\${reads_list}" -h -bo "\${temp_bam}" "\${bam}"
     temp_bams+=("\${temp_bam}")
   done
 
-  samtools merge -f "${chrom}.model_construction_reads.bam" "\${temp_bams[@]}"
-  samtools index "${chrom}.model_construction_reads.bam"
+  samtools merge -@ ${task.cpus} -f "${chrom}.model_construction_reads.bam" "\${temp_bams[@]}"
+  samtools index -@ ${task.cpus} "${chrom}.model_construction_reads.bam"
   printf '%s\0' "\${temp_bams[@]}" | xargs -0 rm -f
   """
 }
