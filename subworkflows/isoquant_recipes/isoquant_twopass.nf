@@ -188,20 +188,18 @@ workflow isoquant_chrM {
     ////////////////////////////////////////////////////////////
     //////////////////B-OUTPUT CHANNELs/////////////////////////
     ////////////////////////////////////////////////////////////
-    // Each count channel emits [chrom, [tars], [patterns], [needs_chr_filter]].
-    // chrM tars are always per-chromosome (no filtering needed), so needs_chr_filter is always false.
     isoquant_output_novel_names_ch
       .combine(bam_nums_perChr_ch,by:0)
-      .map{chrom,sample_id,tar,n -> [groupKey(chrom,n),tar,"*.discovered_transcript_grouped_tag_CB_counts.linear.tsv",false]}
+      .map{chrom,sample_id,tar,n -> [groupKey(chrom,n),tar,"*.discovered_transcript_grouped_tag_CB_counts.linear.tsv"]}
       .groupTuple(by:0)
-      .map{chrom,tars,patterns,filters -> [chrom,tars,patterns,filters]}
+      .map{chrom,tars,patterns -> [chrom,tars,patterns]}
       .set{output_isoform_counts_ch}
 
     isoquant_output_novel_names_ch
       .combine(bam_nums_perChr_ch,by:0)
-      .map{chrom,sample_id,tar,n -> [groupKey(chrom,n),tar,"*.discovered_gene_grouped_tag_CB_counts.linear.tsv",false]}
+      .map{chrom,sample_id,tar,n -> [groupKey(chrom,n),tar,"*.discovered_gene_grouped_tag_CB_counts.linear.tsv"]}
       .groupTuple(by:0)
-      .map{chrom,tars,patterns,filters -> [chrom,tars,patterns,filters]}
+      .map{chrom,tars,patterns -> [chrom,tars,patterns]}
       .set{output_gene_counts_ch}
 
     isoquant_output_novel_names_ch
@@ -239,8 +237,8 @@ workflow collect_gene_isoform_counts_perChr_wf {
   main:
 
     //Collecting isoform as MTX
-    isoform_mtx=collect_isoform_counts_as_mtx_perChr(isoform_counts_ch,isoform_counts_ch.map{chrom,tars,patterns,filters -> "${params.results_output}results/counts/isoform/MTX/"})
-    gene_mtx=collect_gene_counts_as_mtx_perChr(gene_counts_ch,gene_counts_ch.map{chrom,tars,patterns,filters -> "${params.results_output}results/counts/gene/MTX/"})
+    isoform_mtx=collect_isoform_counts_as_mtx_perChr(isoform_counts_ch,isoform_counts_ch.map{chrom,tars,patterns -> "${params.results_output}results/counts/isoform/MTX/"})
+    gene_mtx=collect_gene_counts_as_mtx_perChr(gene_counts_ch,gene_counts_ch.map{chrom,tars,patterns -> "${params.results_output}results/counts/gene/MTX/"})
 
     isoform_h5ad=collect_isoform_mtx_as_h5ad(isoform_mtx.chrom_mtx | collect, 'isoforms',"${params.results_output}results/counts/isoform/H5AD/")
     gene_h5ad=collect_gene_mtx_as_h5ad(gene_mtx.chrom_mtx | collect, 'genes',"${params.results_output}results/counts/gene/H5AD/")
@@ -368,36 +366,32 @@ workflow isoquant_twopass_chunked_wf {
     ////////////////////////////////////////////////////////////
     //////////////////B-OUTPUT CHANNELs/////////////////////////
     ////////////////////////////////////////////////////////////
-    // Each count channel emits [chrom, [tars], [patterns], [needs_chr_filter]] where patterns[i] is the
-    // wildcard to extract from tars[i] and needs_chr_filter[i] signals whether rows must be filtered
-    // to this chromosome (true for per-sample whole-genome first-pass tars, false for all others).
     // First-pass tars contribute N items per chrom, second-pass renamed tars contribute `chunks` — total N+chunks.
-    def fp_filter = (params.firstpass_mode == 'per_sample')
 
     //Combining transcript-level counts channels from first and second passes
     isoquant_firstpass_output_ch
       .combine(bam_nums_perChr_ch,by:0)
-      .map{chrom,sample_id,tar,bam,n -> [groupKey(chrom,n+chunks),tar,"*.transcript_grouped_tag_CB_counts.linear.tsv",fp_filter]}
+      .map{chrom,sample_id,tar,bam,n -> [groupKey(chrom,n+chunks),tar,"*.${chrom}.transcript_grouped_tag_CB_counts.linear.tsv"]}
       .mix(
         isoquant_output_novel_names_ch
           .combine(bam_nums_perChr_ch,by:0)
-          .map{chrom,programmaticRegion,tar,n -> [groupKey(chrom,n+chunks),tar,"*.discovered_transcript_grouped_tag_CB_counts.linear.noknown.tsv",false]}
+          .map{chrom,programmaticRegion,tar,n -> [groupKey(chrom,n+chunks),tar,"*.discovered_transcript_grouped_tag_CB_counts.linear.noknown.tsv"]}
       )
       .groupTuple(by:0)
-      .map{chrom,tars,patterns,filters -> [chrom,tars,patterns,filters]}
+      .map{chrom,tars,patterns -> [chrom,tars,patterns]}
       .set{output_isoform_counts_ch}
 
     //Combining gene-level counts channels from first and second passes
     isoquant_firstpass_output_ch
       .combine(bam_nums_perChr_ch,by:0)
-      .map{chrom,sample_id,tar,bam,n -> [groupKey(chrom,n+chunks),tar,"*.gene_grouped_tag_CB_counts.linear.tsv",fp_filter]}
+      .map{chrom,sample_id,tar,bam,n -> [groupKey(chrom,n+chunks),tar,"*.${chrom}.gene_grouped_tag_CB_counts.linear.tsv"]}
       .mix(
         isoquant_output_novel_names_ch
           .combine(bam_nums_perChr_ch,by:0)
-          .map{chrom,programmaticRegion,tar,n -> [groupKey(chrom,n+chunks),tar,"*.discovered_gene_grouped_tag_CB_counts.linear.tsv",false]}
+          .map{chrom,programmaticRegion,tar,n -> [groupKey(chrom,n+chunks),tar,"*.discovered_gene_grouped_tag_CB_counts.linear.tsv"]}
       )
       .groupTuple(by:0)
-      .map{chrom,tars,patterns,filters -> [chrom,tars,patterns,filters]}
+      .map{chrom,tars,patterns -> [chrom,tars,patterns]}
       .set{output_gene_counts_ch}
 
     //Collecting transcript models GTFs from second-pass renamed tars

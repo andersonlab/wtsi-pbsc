@@ -297,10 +297,7 @@ process collect_counts_as_mtx_perChr {
     publishDir "${publish_dir}", mode: 'copy', overwrite: true
 
     input:
-        // tars: one tar per sample/chunk; patterns: one wildcard per tar matching the count file inside
-        // needs_chr_filter: parallel boolean list — true for per-sample whole-genome tars (filter rows
-        //   to this chromosome using read_assignments), false for already-chromosome-scoped tars
-        tuple val(chrom), path(tars), val(patterns), val(needs_chr_filter)
+        tuple val(chrom), path(tars), val(patterns)
         val(publish_dir)
 
     output:
@@ -313,32 +310,11 @@ process collect_counts_as_mtx_perChr {
     """
     tars=(${tars.join(' ')})
     patterns=(${patterns.join(' ')})
-    needs_filter=(${needs_chr_filter.join(' ')})
     count_files=()
 
     for i in \$(seq 0 \$((\${#tars[@]}-1))); do
       out="count_\${i}.tsv"
-      if [ "\${needs_filter[\$i]}" = "true" ]; then
-        chr_features="chr_features_\${i}.txt"
-        tar -xzf "\${tars[\$i]}" -O --wildcards "*.read_assignments.tsv.gz" | zcat | \
-          awk -v chr="${chrom}" '
-            BEGIN { FS="\\t" }
-            /^#/ { next }
-            !header_parsed {
-              for (i=1;i<=NF;i++) { if (\$i=="chr") chr_col=i; if (\$i=="isoform_id") id_col=i; if (\$i=="gene_id") gene_col=i }
-              header_parsed=1; next
-            }
-            chr_col>0 && \$chr_col==chr {
-              if (id_col>0 && \$id_col!="" && \$id_col!=".") print \$id_col
-              if (gene_col>0 && \$gene_col!="" && \$gene_col!=".") print \$gene_col
-            }
-          ' | sort | uniq > "\${chr_features}"
-        tar -xzf "\${tars[\$i]}" -O --wildcards "\${patterns[\$i]}" > "\${out}.raw"
-        awk 'NR==FNR{a[\$1]; next} FNR==1 || (\$1 in a)' "\${chr_features}" "\${out}.raw" > "\${out}"
-        rm "\${chr_features}" "\${out}.raw"
-      else
-        tar -xzf "\${tars[\$i]}" -O --wildcards "\${patterns[\$i]}" > "\${out}"
-      fi
+      tar -xzf "\${tars[\$i]}" -O --wildcards "\${patterns[\$i]}" > "\${out}"
       count_files+=("\${out}")
     done
 
@@ -530,6 +506,50 @@ tag "${sample_id}"
   fi
   isoquant.py --reference \${FA_LOCAL} --genedb \${DB_LOCAL} --complete_genedb --sqanti_output --bam ${bam} --labels ${sample_id} --data_type pacbio_ccs -o ${sample_id} -p ${sample_id} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --no_model_construction --polya_trimmed all --discard_chr chrM
   rm -f ${sample_id}/${sample_id}/${sample_id}.extended_annotation.gtf
+  out_prefix="${sample_id}/${sample_id}/${sample_id}"
+  # Split read_assignments by chromosome; build feature→chr mapping as side-product
+  zcat "\${out_prefix}.read_assignments.tsv.gz" | awk -v pfx="\${out_prefix}" '
+    BEGIN { FS="\\t" }
+    /^#/ { header=header \$0 "\\n"; next }
+    !hdr_done {
+      for (i=1;i<=NF;i++) {
+        if (\$i=="chr")        chr_col=i
+        if (\$i=="isoform_id") id_col=i
+        if (\$i=="gene_id")    gene_col=i
+      }
+      col_hdr=\$0; hdr_done=1; next
+    }
+    {
+      chr=\$chr_col
+      outf=pfx"."chr".read_assignments.tsv"
+      if (!(chr in seen)) { seen[chr]=1; printf "%s", header > outf; print col_hdr > outf }
+      print > outf
+      if (id_col>0   && \$id_col!=""   && \$id_col!=".")   feat_chr[\$id_col]=chr
+      if (gene_col>0 && \$gene_col!="" && \$gene_col!=".") feat_chr[\$gene_col]=chr
+    }
+    END { for (f in feat_chr) print f"\\t"feat_chr[f] > pfx".feat_to_chr.tsv" }
+  '
+  for f in "\${out_prefix}".*.read_assignments.tsv; do gzip "\$f"; done
+  rm "\${out_prefix}.read_assignments.tsv.gz"
+  # Split count TSVs by chromosome
+  for count_tsv in "\${out_prefix}.transcript_grouped_tag_CB_counts.linear.tsv" \
+                   "\${out_prefix}.gene_grouped_tag_CB_counts.linear.tsv"; do
+    [ -f "\${count_tsv}" ] || continue
+    fname=\$(basename "\${count_tsv}")
+    suffix="\${fname#${sample_id}}"
+    awk -v pfx="\${out_prefix}" -v sfx="\${suffix}" '
+      NR==FNR { feat_chr[\$1]=\$2; next }
+      FNR==1  { col_hdr=\$0; next }
+      \$1 in feat_chr {
+        chr=feat_chr[\$1]
+        outf=pfx"."chr sfx
+        if (!(outf in seen)) { seen[outf]=1; print col_hdr > outf }
+        print > outf
+      }
+    ' "\${out_prefix}.feat_to_chr.tsv" "\${count_tsv}"
+    rm "\${count_tsv}"
+  done
+  rm -f "\${out_prefix}.feat_to_chr.tsv"
   tar -czf ${sample_id}.tar ${sample_id}/
   rm -rf ${sample_id}/
   """
@@ -697,15 +717,15 @@ tag "${chrom}"
     reads_list="\${sample_id}.${chrom}.model_construction_reads.txt"
     temp_bam="\${sample_id}.${chrom}.model_construction_reads.tmp.bam"
 
-    tar -xzf "\${tar_f}" -O --wildcards "*.read_assignments.tsv.gz" | zcat | \
-      awk -v chr="${chrom}" '
+    tar -xzf "\${tar_f}" -O --wildcards "*.${chrom}.read_assignments.tsv.gz" | zcat | \
+      awk '
         BEGIN { FS="\\t" }
         /^#/ { next }
         !header_parsed {
-          for (i=1;i<=NF;i++) { if (\$i=="chr") chr_col=i; if (\$i=="assignment_type") type_col=i }
+          for (i=1;i<=NF;i++) { if (\$i=="assignment_type") type_col=i }
           header_parsed=1; next
         }
-        chr_col>0 && type_col>0 && \$chr_col==chr && (\$type_col=="intergenic"||\$type_col=="inconsistent_ambiguous"||\$type_col=="inconsistent"||\$type_col=="inconsistent_non_intronic") { print \$1 }
+        type_col>0 && (\$type_col=="intergenic"||\$type_col=="inconsistent_ambiguous"||\$type_col=="inconsistent"||\$type_col=="inconsistent_non_intronic") { print \$1 }
       ' | sort | uniq > "\${reads_list}"
     samtools view -@ ${task.cpus} -N "\${reads_list}" -h -bo "\${temp_bam}" "\${bam}"
     temp_bams+=("\${temp_bam}")
