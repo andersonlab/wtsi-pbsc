@@ -314,13 +314,22 @@ process collect_counts_as_mtx_perChr {
 
     for i in \$(seq 0 \$((\${#tars[@]}-1))); do
       out="count_\${i}.tsv"
-      tar -xzf "\${tars[\$i]}" -O --wildcards "\${patterns[\$i]}" > "\${out}"
-      count_files+=("\${out}")
+      tar -xzf "\${tars[\$i]}" -O --wildcards "\${patterns[\$i]}" > "\${out}" 2>/dev/null || true
+      if [ -s "\${out}" ]; then
+        count_files+=("\${out}")
+      else
+        rm -f "\${out}"
+      fi
     done
 
     mkdir -p ${chrom}
-    python ${baseDir}/scripts/convert_linear_counts_to_mtx.py -i "\${count_files[@]}" -d ${chrom}/
-    printf '%s\0' "\${count_files[@]}" | xargs -0 rm -f
+    if [ "\${#count_files[@]}" -gt 0 ]; then
+      python ${baseDir}/scripts/convert_linear_counts_to_mtx.py -i "\${count_files[@]}" -d ${chrom}/
+      printf '%s\0' "\${count_files[@]}" | xargs -0 rm -f
+    else
+      touch ${chrom}/barcodes.tsv ${chrom}/genes.tsv
+      printf '%%%%MatrixMarket matrix coordinate integer general\n%%%%\n0 0 0\n' > ${chrom}/matrix.mtx
+    fi
     """
 
 }
@@ -529,8 +538,10 @@ tag "${sample_id}"
     }
     END { for (f in feat_chr) print f"\\t"feat_chr[f] > pfx".feat_to_chr.tsv" }
   '
+  shopt -s nullglob
   for f in "\${out_prefix}".*.read_assignments.tsv; do gzip "\$f"; done
-  rm "\${out_prefix}.read_assignments.tsv.gz"
+  shopt -u nullglob
+  rm -f "\${out_prefix}.read_assignments.tsv.gz"
   # Split count TSVs by chromosome
   for count_tsv in "\${out_prefix}.transcript_grouped_tag_CB_counts.linear.tsv" \
                    "\${out_prefix}.gene_grouped_tag_CB_counts.linear.tsv"; do
@@ -717,7 +728,7 @@ tag "${chrom}"
     reads_list="\${sample_id}.${chrom}.model_construction_reads.txt"
     temp_bam="\${sample_id}.${chrom}.model_construction_reads.tmp.bam"
 
-    tar -xzf "\${tar_f}" -O --wildcards "*.${chrom}.read_assignments.tsv.gz" | zcat | \
+    tar -xzf "\${tar_f}" -O --wildcards "*.${chrom}.read_assignments.tsv.gz" 2>/dev/null | zcat | \
       awk '
         BEGIN { FS="\\t" }
         /^#/ { next }
@@ -726,8 +737,12 @@ tag "${chrom}"
           header_parsed=1; next
         }
         type_col>0 && (\$type_col=="intergenic"||\$type_col=="inconsistent_ambiguous"||\$type_col=="inconsistent"||\$type_col=="inconsistent_non_intronic") { print \$1 }
-      ' | sort | uniq > "\${reads_list}"
-    samtools view -@ ${task.cpus} -N "\${reads_list}" -h -bo "\${temp_bam}" "\${bam}"
+      ' | sort | uniq > "\${reads_list}" || true
+    if [ -s "\${reads_list}" ]; then
+      samtools view -@ ${task.cpus} -N "\${reads_list}" -h -bo "\${temp_bam}" "\${bam}"
+    else
+      samtools view -@ ${task.cpus} -H -bo "\${temp_bam}" "\${bam}"
+    fi
     temp_bams+=("\${temp_bam}")
   done
 
