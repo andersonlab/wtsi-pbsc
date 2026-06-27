@@ -1,6 +1,6 @@
 include {run_isoquant_firstPass; run_isoquant_firstPass_perSample; create_model_construction_bam_perChr; run_isoquant_chunked_merged; replace_novel_names; collect_gtfs} from '../../modules/isoquant.nf'
 include {chroms} from '../core/chroms.nf'
-include {run_isoquant_firstPass_withmodelconstruction; replace_novel_names_firsPass_singlenovelname} from '../../modules/isoquant.nf'
+include {run_isoquant_firstPass_withmodelconstruction; replace_novel_names_firstPass_singlenovelname} from '../../modules/isoquant.nf'
 include {collect_counts_as_mtx_perChr as collect_isoform_counts_as_mtx_perChr} from '../../modules/isoquant.nf'
 include {collect_counts_as_mtx_perChr as collect_gene_counts_as_mtx_perChr} from '../../modules/isoquant.nf'
 include {collect_counts_as_mtx_perChr as collect_intron_include_counts_as_mtx_perChr} from '../../modules/isoquant.nf'
@@ -179,7 +179,7 @@ workflow isoquant_chrM {
 
 
     //Updating names of novel transcript so they don't clash between chunks
-    isoquant_output_novel_names_ch=replace_novel_names_firsPass_singlenovelname(replace_novel_names_input_ch)
+    isoquant_output_novel_names_ch=replace_novel_names_firstPass_singlenovelname(replace_novel_names_input_ch)
 
     ///////////////////////////////////////////////////////
     //////////////////END: FIRST PASS//////////////////////
