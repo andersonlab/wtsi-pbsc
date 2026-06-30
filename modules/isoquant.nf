@@ -538,6 +538,7 @@ tag "${sample_id}"
     }
     END { for (f in feat_chr) print f"\\t"feat_chr[f] > pfx".feat_to_chr.tsv" }
   '
+  touch "\${out_prefix}.feat_to_chr.tsv"
   shopt -s nullglob
   for f in "\${out_prefix}".*.read_assignments.tsv; do gzip "\$f"; done
   shopt -u nullglob
@@ -560,7 +561,6 @@ tag "${sample_id}"
     ' "\${out_prefix}.feat_to_chr.tsv" "\${count_tsv}"
     rm "\${count_tsv}"
   done
-  rm -f "\${out_prefix}.feat_to_chr.tsv"
   tar -czf ${sample_id}.tar ${sample_id}/
   rm -rf ${sample_id}/
   """
