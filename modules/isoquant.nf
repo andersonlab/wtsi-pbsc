@@ -489,6 +489,16 @@ tag "${sample_id}__${chrom}"
   fi
   isoquant.py --reference \${FA_LOCAL} --genedb \${DB_LOCAL} --complete_genedb --sqanti_output --bam ${bam} --labels ${sample_id} --data_type pacbio_ccs -o ${sample_id} -p ${sample_id}.${chrom} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --no_model_construction --polya_trimmed all --process_only_chr ${chrom}
   rm -f ${sample_id}/${sample_id}.${chrom}/${sample_id}.${chrom}.extended_annotation.gtf
+  zcat "${sample_id}/${sample_id}.${chrom}/${sample_id}.${chrom}.read_assignments.tsv.gz" | \
+    awk '
+      BEGIN { FS="\\t" }
+      /^#/ { next }
+      !header_parsed {
+        for (i=1;i<=NF;i++) { if (\$i=="assignment_type") type_col=i }
+        header_parsed=1; next
+      }
+      type_col>0 && (\$type_col=="intergenic"||\$type_col=="inconsistent_ambiguous"||\$type_col=="inconsistent"||\$type_col=="inconsistent_non_intronic") { print \$1 }
+    ' | sort | uniq > "${sample_id}/${sample_id}.${chrom}/${sample_id}.${chrom}.model_construction_reads.txt"
   tar -czf ${sample_id}.tar ${sample_id}/
   rm -rf ${sample_id}/
   """
@@ -516,15 +526,16 @@ tag "${sample_id}"
   isoquant.py --reference \${FA_LOCAL} --genedb \${DB_LOCAL} --complete_genedb --sqanti_output --bam ${bam} --labels ${sample_id} --data_type pacbio_ccs -o ${sample_id} -p ${sample_id} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --no_model_construction --polya_trimmed all --discard_chr chrM
   rm -f ${sample_id}/${sample_id}/${sample_id}.extended_annotation.gtf
   out_prefix="${sample_id}/${sample_id}/${sample_id}"
-  # Split read_assignments by chromosome; build feature→chr mapping as side-product
+  # Split read_assignments by chromosome; build feature→chr mapping + model construction reads list as side-products
   zcat "\${out_prefix}.read_assignments.tsv.gz" | awk -v pfx="\${out_prefix}" '
     BEGIN { FS="\\t" }
     /^#/ { header=header \$0 "\\n"; next }
     !hdr_done {
       for (i=1;i<=NF;i++) {
-        if (\$i=="chr")        chr_col=i
-        if (\$i=="isoform_id") id_col=i
-        if (\$i=="gene_id")    gene_col=i
+        if (\$i=="chr")             chr_col=i
+        if (\$i=="isoform_id")      id_col=i
+        if (\$i=="gene_id")         gene_col=i
+        if (\$i=="assignment_type") type_col=i
       }
       col_hdr=\$0; hdr_done=1; next
     }
@@ -535,12 +546,23 @@ tag "${sample_id}"
       print > outf
       if (id_col>0   && \$id_col!=""   && \$id_col!=".")   feat_chr[\$id_col]=chr
       if (gene_col>0 && \$gene_col!="" && \$gene_col!=".") feat_chr[\$gene_col]=chr
+      if (type_col>0 && (\$type_col=="intergenic"||\$type_col=="inconsistent_ambiguous"||\$type_col=="inconsistent"||\$type_col=="inconsistent_non_intronic"))
+        print \$1 > pfx"."chr".model_construction_reads.txt"
     }
     END { for (f in feat_chr) print f"\\t"feat_chr[f] > pfx".feat_to_chr.tsv" }
   '
   touch "\${out_prefix}.feat_to_chr.tsv"
   shopt -s nullglob
-  for f in "\${out_prefix}".*.read_assignments.tsv; do gzip "\$f"; done
+  for f in "\${out_prefix}".*.read_assignments.tsv; do
+    chr="\${f#\${out_prefix}.}"; chr="\${chr%.read_assignments.tsv}"
+    reads_list="\${out_prefix}.\${chr}.model_construction_reads.txt"
+    if [ -f "\${reads_list}" ]; then
+      sort -u "\${reads_list}" -o "\${reads_list}"
+    else
+      touch "\${reads_list}"
+    fi
+    gzip "\$f"
+  done
   shopt -u nullglob
   rm -f "\${out_prefix}.read_assignments.tsv.gz"
   # Split count TSVs by chromosome
@@ -728,16 +750,7 @@ tag "${chrom}"
     reads_list="\${sample_id}.${chrom}.model_construction_reads.txt"
     temp_bam="\${sample_id}.${chrom}.model_construction_reads.tmp.bam"
 
-    tar -xzf "\${tar_f}" -O --wildcards "*.${chrom}.read_assignments.tsv.gz" 2>/dev/null | zcat | \
-      awk '
-        BEGIN { FS="\\t" }
-        /^#/ { next }
-        !header_parsed {
-          for (i=1;i<=NF;i++) { if (\$i=="assignment_type") type_col=i }
-          header_parsed=1; next
-        }
-        type_col>0 && (\$type_col=="intergenic"||\$type_col=="inconsistent_ambiguous"||\$type_col=="inconsistent"||\$type_col=="inconsistent_non_intronic") { print \$1 }
-      ' | sort | uniq > "\${reads_list}" || true
+    tar -xzf "\${tar_f}" -O --wildcards "*.${chrom}.model_construction_reads.txt" > "\${reads_list}" 2>/dev/null || true
     if [ -s "\${reads_list}" ]; then
       samtools view -@ ${task.cpus} -N "\${reads_list}" -h -bo "\${temp_bam}" "\${bam}"
     else
