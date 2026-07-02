@@ -708,7 +708,7 @@ process replace_novel_names_firstPass_singlenovelname {
 
 
 process create_model_construction_bam {
-label 'mini_job'
+label 'model_construction_bam'
 
   input:
       tuple val(chrom), val(sample_id),path(read_assignment_f), path(bam)
@@ -728,7 +728,7 @@ label 'mini_job'
 
 
 process create_model_construction_bam_perChr {
-label 'medium_job'
+label 'model_construction_bam'
 tag "${chrom}"
 
   input:
