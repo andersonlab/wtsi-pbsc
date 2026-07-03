@@ -97,6 +97,8 @@ process suggest_splits_binarySearch_v2 {
 process suggest_splits_binarySearch {
   label 'mini_job'
 
+  afterScript "rm -f bams.txt"
+
     input:
       tuple val(chrom), val(sample_ids), path(bams), path(bais), path(unmapped_regions_bed)
       val chunks
@@ -109,7 +111,6 @@ process suggest_splits_binarySearch {
     python ${baseDir}/dev/split_chr.py  -c ${chunks} -b bams.txt -r "${chrom}" -s ${unmapped_regions_bed} -z ${chrom_sizes_f} -o suggested_splits."${chrom}".bed
     awk -F "\t" '{print \$1"\t"(\$2+1)"\t"\$3}' suggested_splits."${chrom}".bed > suggested_splits_onebased_coords."${chrom}".bed
     awk -F "\t" '{print \$1":"\$2"-"\$3}' suggested_splits_onebased_coords."${chrom}".bed  > suggested_splits_onebased_coords."${chrom}".list
-    rm bams.txt
     """
 }
 
@@ -155,6 +156,7 @@ process split_bams {
 
 process run_isoquant_chunked {
     label 'isoquant_chunked'
+    afterScript "rm -f ${programmaticRegion}/${programmaticRegion}/${programmaticRegion}.extended_annotation.gtf"
     // memory {
     //   def numReads = numReads.toInteger()
     //   def baseMemGB=3
@@ -171,17 +173,16 @@ process run_isoquant_chunked {
     output:
         tuple val(chrom), val(programmaticRegion), path("${programmaticRegion}/")
 
-
     script:
     """
     isoquant.py --reference ${fasta} --genedb ${genedb} --complete_genedb --sqanti_output --bam ${bams.join(' ')} --labels ${sample_ids.join(' ')} --data_type pacbio_ccs -o ${programmaticRegion} -p ${programmaticRegion} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --clean_start --polya_trimmed all --process_only_chr ${chrom}
-    rm -f ${programmaticRegion}/${programmaticRegion}/${programmaticRegion}.extended_annotation.gtf
     """
 }
 
 process replace_novel_names {
     label 'micro_job'
     tag "${programmaticRegion}"
+    afterScript "rm -rf ${programmaticRegion}_renamed/ ${programmaticRegion}/"
 
     input:
       tuple val(chrom), val(programmaticRegion), path(isoquant_tar)
@@ -267,7 +268,6 @@ process replace_novel_names {
 
     # --dereference resolves symlinks created for unchanged files so the tar contains real content
     tar --dereference -czf ${programmaticRegion}_renamed.tar ${programmaticRegion}_renamed/
-    rm -rf ${programmaticRegion}_renamed/ ${programmaticRegion}/
     """
 }
 
@@ -295,6 +295,7 @@ process collect_counts_as_mtx_perChr {
     label 'counts_collect'
     tag "${chrom}"
     publishDir "${publish_dir}", mode: 'copy', overwrite: true
+    afterScript "find . -maxdepth 1 -name 'count_*.tsv' -print0 | xargs -0 -r rm -f"
 
     input:
         tuple val(chrom), path(tars), val(patterns)
@@ -317,15 +318,12 @@ process collect_counts_as_mtx_perChr {
       tar -xzf "\${tars[\$i]}" -O --wildcards "\${patterns[\$i]}" > "\${out}" 2>/dev/null || true
       if [ -s "\${out}" ]; then
         count_files+=("\${out}")
-      else
-        rm -f "\${out}"
       fi
     done
 
     mkdir -p ${chrom}
     if [ "\${#count_files[@]}" -gt 0 ]; then
       python ${baseDir}/scripts/convert_linear_counts_to_mtx.py -i "\${count_files[@]}" -d ${chrom}/
-      printf '%s\0' "\${count_files[@]}" | xargs -0 rm -f
     else
       touch ${chrom}/barcodes.tsv ${chrom}/genes.tsv
       printf '%%%%MatrixMarket matrix coordinate integer general\n%%%%\n0 0 0\n' > ${chrom}/matrix.mtx
@@ -470,6 +468,7 @@ process run_isoquant_perChr {
 process run_isoquant_firstPass {
 label 'isoquant_firstPass'
 tag "${sample_id}__${chrom}"
+afterScript "rm -rf ${sample_id}/"
 
   input:
       tuple val(chrom), val(sample_id), path(bam), path(bai)
@@ -500,12 +499,12 @@ tag "${sample_id}__${chrom}"
       type_col>0 && (\$type_col=="intergenic"||\$type_col=="inconsistent_ambiguous"||\$type_col=="inconsistent"||\$type_col=="inconsistent_non_intronic") { print \$1 }
     ' | sort | uniq > "${sample_id}/${sample_id}.${chrom}/${sample_id}.${chrom}.model_construction_reads.txt"
   tar -czf ${sample_id}.tar ${sample_id}/
-  rm -rf ${sample_id}/
   """
 }
 process run_isoquant_firstPass_perSample {
 label 'isoquant_firstPass_perSample'
 tag "${sample_id}"
+afterScript "rm -rf ${sample_id}/"
 
   input:
       tuple val(sample_id), path(bam), path(bai)
@@ -594,6 +593,7 @@ tag "${sample_id}"
 process run_isoquant_firstPass_withmodelconstruction {
 label 'isoquant_firstPass_withmodelconstruction'
 tag "${sample_id}__${chrom}"
+afterScript "rm -rf ${sample_id}/"
 
   input:
       tuple val(chrom), val(sample_id), path(bam), path(bai)
@@ -613,13 +613,13 @@ tag "${sample_id}__${chrom}"
   isoquant.py --reference \${FA_LOCAL} --genedb \${DB_LOCAL} --complete_genedb --sqanti_output --bam ${bam} --labels ${sample_id} --data_type pacbio_ccs -o ${sample_id} -p ${sample_id}.${chrom} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --polya_trimmed all --process_only_chr ${chrom}
   rm -f ${sample_id}/${sample_id}.${chrom}/${sample_id}.${chrom}.extended_annotation.gtf
   tar -czf ${sample_id}.tar ${sample_id}/
-  rm -rf ${sample_id}/
   """
 }
 
 process replace_novel_names_firstPass_singlenovelname {
     label 'micro_job'
     tag "${sample_id}__${chrom}"
+    afterScript "rm -rf ${sample_id}.${chrom}_renamed/ ${sample_id}/"
 
     input:
       tuple val(chrom), val(sample_id), path(isoquant_tar)
@@ -699,7 +699,6 @@ process replace_novel_names_firstPass_singlenovelname {
 
     # --dereference resolves symlinks created for unchanged files so the tar contains real content
     tar --dereference -czf ${sample_id}.${chrom}_renamed.tar ${sample_id}.${chrom}_renamed/
-    rm -rf ${sample_id}.${chrom}_renamed/ ${sample_id}/
     """
 }
 /////////////////////////////
@@ -728,8 +727,10 @@ label 'model_construction_bam'
 
 
 process create_model_construction_bam_perChr {
-label 'model_construction_bam'
-tag "${chrom}"
+  label 'model_construction_bam'
+  tag "${chrom}"
+
+  afterScript "rm -f *.${chrom}.model_construction_reads.tmp.bam *.${chrom}.model_construction_reads.txt"
 
   input:
       tuple val(chrom), val(sample_ids), path(firstpass_tars), path(bams)
@@ -758,17 +759,15 @@ tag "${chrom}"
     fi
     temp_bams+=("\${temp_bam}")
   done
-
   samtools merge -@ ${task.cpus} -f "${chrom}.model_construction_reads.bam" "\${temp_bams[@]}"
   samtools index -@ ${task.cpus} "${chrom}.model_construction_reads.bam"
-  printf '%s\0' "\${temp_bams[@]}" | xargs -0 rm -f
   """
 }
-
 
 process run_isoquant_chunked_merged {
     label 'isoquant_chunked'
     tag "${programmaticRegion}"
+    afterScript "rm -rf ${programmaticRegion}/"
 
     input:
         tuple val(chrom), path(bam), path(bai), val(formattedRegion), val(programmaticRegion)
@@ -790,7 +789,6 @@ process run_isoquant_chunked_merged {
     isoquant.py --reference \${FA_LOCAL} --genedb \${DB_LOCAL} --complete_genedb --sqanti_output --bam ${bam} --labels ${programmaticRegion} --data_type pacbio_ccs -o ${programmaticRegion} -p ${programmaticRegion} --count_exons --check_canonical  --read_group tag:CB -t ${task.cpus} --counts_format mtx --bam_tags CB --no_secondary --clean_start --polya_trimmed all --process_only_chr ${chrom}
     rm -f ${programmaticRegion}/${programmaticRegion}/${programmaticRegion}.extended_annotation.gtf
     tar -czf ${programmaticRegion}.tar ${programmaticRegion}/
-    rm -rf ${programmaticRegion}/
     """
 }
 
