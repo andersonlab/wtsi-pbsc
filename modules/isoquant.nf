@@ -294,12 +294,12 @@ process collect_counts_as_mtx {
 process collect_counts_as_mtx_perChr {
     label 'counts_collect'
     tag "${chrom}"
-    publishDir "${publish_dir}", mode: 'copy', overwrite: true
+    publishDir { "${params.results_output}results/counts/${count_type}/MTX/" }, mode: 'copy', overwrite: true
     afterScript "find . -maxdepth 1 -name 'count_*.tsv' -print0 | xargs -0 -r rm -f; find . -maxdepth 1 -name 'gtf_*.gtf' -print0 | xargs -0 -r rm -f"
 
     input:
         tuple val(chrom), path(tars), val(patterns)
-        val(publish_dir)
+        val(count_type)
         val(feature_type)
         path(ref_gtf_f)
 

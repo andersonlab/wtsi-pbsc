@@ -237,8 +237,8 @@ workflow collect_gene_isoform_counts_perChr_wf {
   main:
 
     //Collecting isoform as MTX
-    isoform_mtx=collect_isoform_counts_as_mtx_perChr(isoform_counts_ch,isoform_counts_ch.map{chrom,tars,patterns -> "${params.results_output}results/counts/isoform/MTX/"},'transcript',params.gtf_f)
-    gene_mtx=collect_gene_counts_as_mtx_perChr(gene_counts_ch,gene_counts_ch.map{chrom,tars,patterns -> "${params.results_output}results/counts/gene/MTX/"},'gene',params.gtf_f)
+    isoform_mtx=collect_isoform_counts_as_mtx_perChr(isoform_counts_ch,'isoform','transcript',params.gtf_f)
+    gene_mtx=collect_gene_counts_as_mtx_perChr(gene_counts_ch,'gene','gene',params.gtf_f)
 
     isoform_h5ad=collect_isoform_mtx_as_h5ad(isoform_mtx.chrom_mtx | collect, 'isoforms',"${params.results_output}results/counts/isoform/H5AD/")
     gene_h5ad=collect_gene_mtx_as_h5ad(gene_mtx.chrom_mtx | collect, 'genes',"${params.results_output}results/counts/gene/H5AD/")
