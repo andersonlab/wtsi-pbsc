@@ -295,11 +295,13 @@ process collect_counts_as_mtx_perChr {
     label 'counts_collect'
     tag "${chrom}"
     publishDir "${publish_dir}", mode: 'copy', overwrite: true
-    afterScript "find . -maxdepth 1 -name 'count_*.tsv' -print0 | xargs -0 -r rm -f"
+    afterScript "find . -maxdepth 1 -name 'count_*.tsv' -print0 | xargs -0 -r rm -f; find . -maxdepth 1 -name 'gtf_*.gtf' -print0 | xargs -0 -r rm -f"
 
     input:
         tuple val(chrom), path(tars), val(patterns)
         val(publish_dir)
+        val(feature_type)
+        path(ref_gtf_f)
 
     output:
         path("${chrom}"), emit: chrom_mtx
@@ -320,6 +322,32 @@ process collect_counts_as_mtx_perChr {
         count_files+=("\${out}")
       fi
     done
+
+    # Restrict counts to the intersection with valid GTF features: the reference restricted to this
+    # chromosome (covers known transcripts/genes quantified in the first, no-model-construction pass)
+    # plus any novel transcript models from the second pass. Skipped when no feature_type is given.
+    if [ -n "${feature_type}" ]; then
+      awk -v chrom="${chrom}" '{if(\$1 ~ /^#/){next} else {if (\$1==chrom){print}}}' ${ref_gtf_f} > ref_chrom.gtf
+      bash ${baseDir}/scripts/extract_gtf_feature_ids.sh ${feature_type} ref_chrom.gtf > known_ids.csv
+
+      gtf_files=()
+      for i in \$(seq 0 \$((\${#tars[@]}-1))); do
+        out="gtf_\${i}.gtf"
+        tar -xzf "\${tars[\$i]}" -O --wildcards "*.transcript_models.gtf" > "\${out}" 2>/dev/null || true
+        [ -s "\${out}" ] && gtf_files+=("\${out}")
+      done
+      if [ "\${#gtf_files[@]}" -gt 0 ]; then
+        bash ${baseDir}/scripts/extract_gtf_feature_ids.sh ${feature_type} "\${gtf_files[@]}" > novel_ids.csv
+      else
+        touch novel_ids.csv
+      fi
+      cat known_ids.csv novel_ids.csv | sort -u > valid_ids.csv
+
+      for f in "\${count_files[@]}"; do
+        awk -F'\\t' 'NR==FNR{keep[\$1]=1;next} FNR==1{print;next} (\$1 in keep){print}' valid_ids.csv "\$f" > "\${f}.filtered"
+        mv "\${f}.filtered" "\$f"
+      done
+    fi
 
     mkdir -p ${chrom}
     if [ "\${#count_files[@]}" -gt 0 ]; then
@@ -372,7 +400,7 @@ process collect_gtfs {
     """
     renamed_tars=(${renamed_tars.join(' ')})
 
-    for f in isoforms/isoforms*.tsv; do cut -f1 \$f; done | sort | uniq > all_features.csv
+    for f in isoforms/isoforms*.tsv; do cut -f1 \$f; done | sort -u > counted_features.csv
 
     gtf_files=()
     for i in \$(seq 0 \$((\${#renamed_tars[@]}-1))); do
@@ -385,6 +413,13 @@ process collect_gtfs {
 
     python ${baseDir}/scripts/collect_gtfs.py -Q query_gtf_files.txt -r ${ref_gtf_f} -o extended_annotation.gtf
     echo "Finished collecting extended annotation GTF"
+
+    # IsoQuant occasionally reports counts for features that never made it into any GTF; keep only
+    # counted features that actually resolve in the merged annotation so db_subset.py never fails
+    bash ${baseDir}/scripts/extract_gtf_feature_ids.sh transcript extended_annotation.gtf | sort -u > extended_annotation_ids.csv
+    comm -12 counted_features.csv extended_annotation_ids.csv > all_features.csv
+    echo "Dropped \$(comm -23 counted_features.csv extended_annotation_ids.csv | wc -l) counted feature(s) absent from the collected GTFs"
+
     python ${baseDir}/scripts/create_genedb.py -g extended_annotation.gtf -o extended_annotation.gtf.db
     echo "Finished creating extended annotation DB"
     python ${baseDir}/scripts/db_subset.py -d extended_annotation.gtf.db -i all_features.csv -o transcript_models.gtf
