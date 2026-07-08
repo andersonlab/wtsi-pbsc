@@ -64,7 +64,7 @@ process suggest_splits_binarySearch {
 
 
 process find_mapped_and_unmapped_regions_perChr {
-  label 'medium_job'
+  label 'find_mapped_unmapped_regions'
   tag "${chrom}"
 
   input:

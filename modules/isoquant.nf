@@ -38,7 +38,7 @@ process preprocess_bam {
 
 
 process find_mapped_and_unmapped_regions_per_sampleChrom {
-  label 'medium_job'
+  label 'find_mapped_unmapped_regions'
 
   input:
       tuple val(sample_id), val(chrom), path(bam), path(bai)
