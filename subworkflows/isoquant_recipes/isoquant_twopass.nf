@@ -1,4 +1,4 @@
-include {run_isoquant_firstPass; run_isoquant_firstPass_perSample; create_model_construction_bam_perChr; run_isoquant_chunked_merged; replace_novel_names; collect_gtfs} from '../../modules/isoquant.nf'
+include {run_isoquant_firstPass; run_isoquant_firstPass_perSample; create_model_construction_bam; create_model_construction_bam_perChr; run_isoquant_chunked_merged; replace_novel_names; collect_gtfs} from '../../modules/isoquant.nf'
 include {chroms} from '../core/chroms.nf'
 include {run_isoquant_firstPass_withmodelconstruction; replace_novel_names_firstPass_singlenovelname} from '../../modules/isoquant.nf'
 include {collect_counts_as_mtx_perChr as collect_isoform_counts_as_mtx_perChr} from '../../modules/isoquant.nf'
@@ -36,7 +36,7 @@ workflow isoquant_twopass_perChr_wf {
     isoquant_firstpass_output_ch
     .map{ chrom,sample_id,isoquant_output_dir,read_assignment_f,bam -> [chrom,sample_id,read_assignment_f,bam] }
     .set{ model_construction_bam_input_ch }
-    model_construction_bam_ch=create_model_construction_bam(model_construction_bam_input_ch)
+    model_construction_bam_ch=create_model_construction_bam(model_construction_bam_input_ch, params.isoquant_exclusion_regions_bed ?: '')
 
     model_construction_bam_ch
     .groupTuple(by:0)
@@ -268,7 +268,7 @@ workflow collect_output_wf {
     ///5-Collecting transcript model GTFs
     isoform_gene_mtx_h5ad.isoform_mtx.map{mtx_dir -> "${mtx_dir}/genes.tsv"}.collect().set{mtx_isoform_fs}
     existing_gtf_ch.map{chrom,gtf_tars -> gtf_tars}.collect().set{input_gtf_ch}
-    gtfs=collect_gtfs(input_gtf_ch,params.gtf_f,mtx_isoform_fs,"${params.results_output}results/gtf/")
+    gtfs=collect_gtfs(input_gtf_ch,params.gtf_f,mtx_isoform_fs,params.genome_fasta_f,params.genome_fasta_f + ".fai","${params.results_output}results/gtf/")
     extended_gtf=gtfs[0]
     existing_gtf=gtfs[1]
     // assignment_reads_ch.view()
@@ -307,7 +307,7 @@ workflow isoquant_twopass_chunked_wf {
     .map{ chrom,sample_id,tar,bam,n -> [groupKey(chrom,n),sample_id,tar,bam] }
     .groupTuple(by:0)
     .set{ model_construction_bam_input_ch }
-    model_construction_bam_ch=create_model_construction_bam_perChr(model_construction_bam_input_ch)
+    model_construction_bam_ch=create_model_construction_bam_perChr(model_construction_bam_input_ch, params.isoquant_exclusion_regions_bed ?: '')
     // model_construction_bam_ch: [chrom, merged_bam, merged_bai]
     ////////////////////////////////////////////////////////////
     //////////////////END: A-FIRST PASS/////////////////////////

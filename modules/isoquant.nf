@@ -387,14 +387,14 @@ process collect_gtfs {
         path(renamed_tars)
         path(ref_gtf_f)
         path(mtx_isoform_fs, stageAs: 'isoforms/isoforms?.tsv')
+        path(genome_fasta_f)
+        path(genome_fasta_fai)
         val(publish_dir)
 
 
     output:
         path("extended_annotation.gtf")
         path("transcript_models.gtf")
-        path("extended_annotation.gtf.db")
-        path("transcript_models.gtf.db")
 
     script:
     """
@@ -406,26 +406,39 @@ process collect_gtfs {
     for i in \$(seq 0 \$((\${#renamed_tars[@]}-1))); do
       out="gtf_\${i}.gtf"
       tar -xzf "\${renamed_tars[\$i]}" -O --wildcards "*.transcript_models.gtf" > "\${out}"
-      gtf_files+=("\${out}")
+      # isomatch errors out on GTFs with no transcript records (e.g. chunks covering a region
+      # with no calls); skip empty/header-only files here rather than passing them in.
+      if [ -s "\${out}" ] && grep -qv '^#' "\${out}"; then
+        gtf_files+=("\${out}")
+      fi
     done
 
-    for f in "\${gtf_files[@]}"; do echo \$f; done > query_gtf_files.txt
+    # Merge all per-chunk transcript models with the reference GTF, collapsing only exact
+    # structural duplicates (zero splice-junction/TSS/TES wobble) -- no fuzzy/majority-vote merging.
+    ${params.isomatch_bin} merge --ref-fa ${genome_fasta_f} -o isomatch_merge \\
+      --wob-d 0 --wob-a 0 --wob-u 0 --tss-wob 0 --tes-wob 0 \\
+      --wob-d-nc 0 --wob-a-nc 0 --wob-u-nc 0 --tss-wob-nc 0 --tes-wob-nc 0 \\
+      --mono-ovlp 1.0 \\
+      "\${gtf_files[@]}" ${ref_gtf_f}
 
-    python ${baseDir}/scripts/collect_gtfs.py -Q query_gtf_files.txt -r ${ref_gtf_f} -o extended_annotation.gtf
+    # isomatch renames every merged gene/transcript to ISOMG_*/ISOMT_*; restore the original
+    # IDs (preferring the reference GTF's) so isoform lookups by IsoQuant's own transcript IDs
+    # (gtf_subset.py) keep working downstream.
+    python ${baseDir}/scripts/isomatch_restore_ids.py \\
+      --track isomatch_merge.track.tsv.gz \\
+      --merged-gtf isomatch_merge.merged.gtf.gz \\
+      --ref-name ${ref_gtf_f} \\
+      --out extended_annotation.gtf
     echo "Finished collecting extended annotation GTF"
 
     # IsoQuant occasionally reports counts for features that never made it into any GTF; keep only
-    # counted features that actually resolve in the merged annotation so db_subset.py never fails
+    # counted features that actually resolve in the merged annotation so gtf_subset.py never fails
     bash ${baseDir}/scripts/extract_gtf_feature_ids.sh transcript extended_annotation.gtf | sort -u > extended_annotation_ids.csv
     comm -12 counted_features.csv extended_annotation_ids.csv > all_features.csv
     echo "Dropped \$(comm -23 counted_features.csv extended_annotation_ids.csv | wc -l) counted feature(s) absent from the collected GTFs"
 
-    python ${baseDir}/scripts/create_genedb.py -g extended_annotation.gtf -o extended_annotation.gtf.db
-    echo "Finished creating extended annotation DB"
-    python ${baseDir}/scripts/db_subset.py -d extended_annotation.gtf.db -i all_features.csv -o transcript_models.gtf
-    echo "Finished subsetting DB as GTF"
-    python ${baseDir}/scripts/create_genedb.py -g transcript_models.gtf -o transcript_models.gtf.db
-    echo "Finished converting GTF to DB"
+    python ${baseDir}/scripts/gtf_subset.py -g extended_annotation.gtf -i all_features.csv -o transcript_models.gtf
+    echo "Finished subsetting transcript models GTF"
 
     """
 }
@@ -746,6 +759,7 @@ label 'model_construction_bam'
 
   input:
       tuple val(chrom), val(sample_id),path(read_assignment_f), path(bam)
+      val(exclusion_bed_f)
   output:
       tuple val(chrom), val(sample_id), path("${sample_id}.${chrom}.model_construction_reads.bam"), path("${sample_id}.${chrom}.model_construction_reads.bam.bai")
   script:
@@ -755,7 +769,11 @@ label 'model_construction_bam'
 
   zcat ${read_assignment_f} | tail -n+4 | awk '{if( (\$6=="intergenic") || (\$6=="inconsistent_ambiguous") || (\$6=="inconsistent") || (\$6=="inconsistent_non_intronic"))print \$1}' | sort | uniq > \${model_construction_reads_list}
 
-  samtools view -N \${model_construction_reads_list} -h -bo \${model_construction_bam} ${bam}
+  if [ -n "${exclusion_bed_f}" ]; then
+    samtools view -N \${model_construction_reads_list} -h -b ${bam} | bedtools intersect -v -abam - -b ${exclusion_bed_f} > \${model_construction_bam}
+  else
+    samtools view -N \${model_construction_reads_list} -h -bo \${model_construction_bam} ${bam}
+  fi
   samtools index \${model_construction_bam}
   """
 }
@@ -769,6 +787,7 @@ process create_model_construction_bam_perChr {
 
   input:
       tuple val(chrom), val(sample_ids), path(firstpass_tars), path(bams)
+      val(exclusion_bed_f)
   output:
       tuple val(chrom), path("${chrom}.model_construction_reads.bam"), path("${chrom}.model_construction_reads.bam.bai")
   script:
@@ -788,7 +807,11 @@ process create_model_construction_bam_perChr {
 
     tar -xzf "\${tar_f}" -O --wildcards "*.${chrom}.model_construction_reads.txt" > "\${reads_list}" 2>/dev/null || true
     if [ -s "\${reads_list}" ]; then
-      samtools view -@ ${task.cpus} -N "\${reads_list}" -h -bo "\${temp_bam}" "\${bam}"
+      if [ -n "${exclusion_bed_f}" ]; then
+        samtools view -@ ${task.cpus} -N "\${reads_list}" -h -b "\${bam}" | bedtools intersect -v -abam - -b ${exclusion_bed_f} > "\${temp_bam}"
+      else
+        samtools view -@ ${task.cpus} -N "\${reads_list}" -h -bo "\${temp_bam}" "\${bam}"
+      fi
     else
       samtools view -@ ${task.cpus} -H -bo "\${temp_bam}" "\${bam}"
     fi
