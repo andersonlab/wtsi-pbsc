@@ -268,7 +268,7 @@ workflow collect_output_wf {
     ///5-Collecting transcript model GTFs
     isoform_gene_mtx_h5ad.isoform_mtx.map{mtx_dir -> "${mtx_dir}/genes.tsv"}.collect().set{mtx_isoform_fs}
     existing_gtf_ch.map{chrom,gtf_tars -> gtf_tars}.collect().set{input_gtf_ch}
-    gtfs=collect_gtfs(input_gtf_ch,params.gtf_f,mtx_isoform_fs,params.genome_fasta_f,params.genome_fasta_f + ".fai","${params.results_output}results/gtf/")
+    gtfs=collect_gtfs(input_gtf_ch,params.gtf_f,mtx_isoform_fs,"${params.results_output}results/gtf/")
     extended_gtf=gtfs[0]
     existing_gtf=gtfs[1]
     // assignment_reads_ch.view()

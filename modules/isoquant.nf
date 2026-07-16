@@ -387,8 +387,6 @@ process collect_gtfs {
         path(renamed_tars)
         path(ref_gtf_f)
         path(mtx_isoform_fs, stageAs: 'isoforms/isoforms?.tsv')
-        path(genome_fasta_f)
-        path(genome_fasta_fai)
         val(publish_dir)
 
 
@@ -406,29 +404,20 @@ process collect_gtfs {
     for i in \$(seq 0 \$((\${#renamed_tars[@]}-1))); do
       out="gtf_\${i}.gtf"
       tar -xzf "\${renamed_tars[\$i]}" -O --wildcards "*.transcript_models.gtf" > "\${out}"
-      # isomatch errors out on GTFs with no transcript records (e.g. chunks covering a region
-      # with no calls); skip empty/header-only files here rather than passing them in.
+      # skip empty/header-only chunks (e.g. regions with no calls) rather than passing them in.
       if [ -s "\${out}" ] && grep -qv '^#' "\${out}"; then
         gtf_files+=("\${out}")
       fi
     done
 
-    # Merge all per-chunk transcript models with the reference GTF, collapsing only exact
-    # structural duplicates (zero splice-junction/TSS/TES wobble) -- no fuzzy/majority-vote merging.
-    ${params.isomatch_bin} merge --ref-fa ${genome_fasta_f} -o isomatch_merge \\
-      --wob-d 0 --wob-a 0 --wob-u 0 --tss-wob 0 --tes-wob 0 \\
-      --wob-d-nc 0 --wob-a-nc 0 --wob-u-nc 0 --tss-wob-nc 0 --tes-wob-nc 0 \\
-      --mono-ovlp 1.0 \\
-      "\${gtf_files[@]}" ${ref_gtf_f}
-
-    # isomatch renames every merged gene/transcript to ISOMG_*/ISOMT_*; restore the original
-    # IDs (preferring the reference GTF's) so isoform lookups by IsoQuant's own transcript IDs
-    # (gtf_subset.py) keep working downstream.
-    python ${baseDir}/scripts/isomatch_restore_ids.py \\
-      --track isomatch_merge.track.tsv.gz \\
-      --merged-gtf isomatch_merge.merged.gtf.gz \\
-      --ref-name ${ref_gtf_f} \\
-      --out extended_annotation.gtf
+    # Concatenate the reference GTF with all per-chunk transcript models, keeping the first-seen
+    # record for any gene_id/transcript_id duplicated across sources (reference wins), and writing
+    # the result in GENCODE-style order. Every kept line is copied verbatim -- no dropped feature
+    # types (CDS/UTR/start_codon/etc, unlike a structural merge), no reformatting, no judgment calls.
+    python ${baseDir}/scripts/collect_gtfs.py \\
+      -r ${ref_gtf_f} \\
+      -q "\${gtf_files[@]}" \\
+      -o extended_annotation.gtf
     echo "Finished collecting extended annotation GTF"
 
     # IsoQuant occasionally reports counts for features that never made it into any GTF; keep only
