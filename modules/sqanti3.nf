@@ -21,7 +21,7 @@ process SQANTI3_QC {
       """
         sqanti3_qc.py --isoforms ${input_gtf_f} --refGTF ${ref_gtf_f} --refFasta ${genome_fasta_f} \
               --polyA_motif_list ${polya_f} --CAGE_peak ${cage_peak_f} \
-              --report pdf -t ${task.cpus} --polyA_peak ${polya_sites} \
+              --report pdf -n ${task.cpus} --polyA_peak ${polya_sites} \
               -d sqanti3_qc/ --include_ORF --output transcript_models
       """
 
