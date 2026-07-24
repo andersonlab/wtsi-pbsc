@@ -83,20 +83,21 @@ workflow pfam_annotation_wf {
 
 workflow sqanti3 {
 
-  def input_gtf_f="${params.results_output}results/gtf/transcript_models.gtf"
+  def input_gtf_f = params.sqanti3_gtf ?: "${params.results_output}results/gtf/transcript_models.gtf"
+  def prefix = file(input_gtf_f).baseName
 
   SQANTI3_QC_SPLIT(input_gtf_f, params.sqanti3_num_chunks)
   SQANTI3_QC_CHUNK(
     SQANTI3_QC_SPLIT.out.chunk_gtfs.flatten(),
     params.gtf_f, params.genome_fasta_f, params.polya_f, params.cage_peak_f, params.polya_sites,
-    params.sqanti3_num_chunks
+    params.sqanti3_num_chunks, prefix
   )
   SQANTI3_QC_COMBINE(
     SQANTI3_QC_CHUNK.out.chunk_dir.collect(),
     input_gtf_f, params.gtf_f, params.genome_fasta_f,
-    params.sqanti3_num_chunks
+    params.sqanti3_num_chunks, prefix
   )
-  SQANTI3_FILTER(SQANTI3_QC_COMBINE.out.classification, SQANTI3_QC_COMBINE.out.corrected_gtf, SQANTI3_QC_COMBINE.out.corrected_faa, SQANTI3_QC_COMBINE.out.td2_dir, input_gtf_f, params.sqanti_filter_json)
+  SQANTI3_FILTER(SQANTI3_QC_COMBINE.out.classification, SQANTI3_QC_COMBINE.out.corrected_gtf, SQANTI3_QC_COMBINE.out.corrected_faa, SQANTI3_QC_COMBINE.out.td2_dir, input_gtf_f, params.sqanti_filter_json, prefix)
   Channel
   .fromPath("${params.results_output}results/counts/isoform/MTX/*/matrix.mtx")
   .map{path -> path.parent}
