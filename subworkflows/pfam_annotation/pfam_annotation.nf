@@ -7,7 +7,7 @@ workflow PFAM_ANNOTATION_WF {
   main:
     if (filtered_gtf == 'independent workflow') {
       Channel
-        .fromPath("${params.results_output}results/transcript_info/sqanti3/sqanti3_filter/*.filtered.gtf")
+        .fromPath("${params.results_output}results/transcript_info/sqanti3/sqanti3_filter/*_corrected.filtered.gtf")
         .set { filtered_gtf }
     }
     GFFREAD_PROTEINS(filtered_gtf, params.genome_fasta_f)
