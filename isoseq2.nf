@@ -98,15 +98,18 @@ workflow sqanti3 {
     params.sqanti3_num_chunks, prefix
   )
   SQANTI3_FILTER(SQANTI3_QC_COMBINE.out.classification, SQANTI3_QC_COMBINE.out.corrected_gtf, SQANTI3_QC_COMBINE.out.corrected_faa, SQANTI3_QC_COMBINE.out.td2_dir, input_gtf_f, params.sqanti_filter_json, prefix)
-  Channel
-  .fromPath("${params.results_output}results/counts/isoform/MTX/*/matrix.mtx")
-  .map{path -> path.parent}
-  .set{prefiltered_mtx_dir_ch}
-  mtx_subset_output_ch=mtx_subset_wf(prefiltered_mtx_dir_ch, SQANTI3_FILTER.out.pass_isoforms)
-  mtx_subset_output_ch.h5ad_file.view()
+
+  if (!params.sqanti3_gtf && !params.sqanti3_output_dir) {
+    Channel
+    .fromPath("${params.results_output}results/counts/isoform/MTX/*/matrix.mtx")
+    .map{path -> path.parent}
+    .set{prefiltered_mtx_dir_ch}
+    mtx_subset_output_ch=mtx_subset_wf(prefiltered_mtx_dir_ch, SQANTI3_FILTER.out.pass_isoforms)
+    mtx_subset_output_ch.h5ad_file.view()
 
 ///  customPublishFilteredH5ADIsoform(mtx_subset_output_ch.h5ad_file,"${params.results_output}results/counts_sqanti3/isoform/H5AD/")
 ///  customPublishFilteredMTXIsoform((mtx_subset_output_ch.isoform_mtx).collect(),"${params.results_output}results/counts_sqanti3/isoform/MTX/")
+  }
 
 }
 
