@@ -1,5 +1,5 @@
 include { SPLIT_READS; REMOVE_PRIMER; TAG_BAM; REFINE_READS } from '../../modules/fltnc.nf'
-include {BARCODE_CORRECTION; GET_BARCODES; SUPSET_BAM; DEDUP_READS; COMBINE_DEDUPS; COMBINE_MUPPED; COMBINE_MUPPED_SUPPLEMENTARY; COMBINE_MUPPED_NOSUPPLEMENTARY; BAM_STATS} from '../../modules/barcodes.nf'
+include {BARCODE_CORRECTION; GET_BARCODES; SUPSET_BAM; DEDUP_READS; COMBINE_DEDUPS; COMBINE_MAPPED; COMBINE_MAPPED_SUPPLEMENTARY; COMBINE_MAPPED_NOSUPPLEMENTARY; BAM_STATS} from '../../modules/barcodes.nf'
 
 include { PBMM2 } from '../../modules/pbmm2.nf'
 
@@ -61,18 +61,18 @@ workflow MAPPING_ONLY {
         }
 
         mapped_chunks_ch = PBMM2.out.map_tuple.groupTuple(size: params.number_of_chunks)
-        COMBINE_MUPPED(mapped_chunks_ch)
+        COMBINE_MAPPED(mapped_chunks_ch)
 
         supplementary_chunks_ch = PBMM2.out.supplementary_tuple.groupTuple(size: params.number_of_chunks)
-        COMBINE_MUPPED_SUPPLEMENTARY(supplementary_chunks_ch)
+        COMBINE_MAPPED_SUPPLEMENTARY(supplementary_chunks_ch)
 
         nosupplementary_chunks_ch = PBMM2.out.nosupplementary_tuple.groupTuple(size: params.number_of_chunks)
-        COMBINE_MUPPED_NOSUPPLEMENTARY(nosupplementary_chunks_ch)
+        COMBINE_MAPPED_NOSUPPLEMENTARY(nosupplementary_chunks_ch)
 
     emit:
-        mapped_reads = COMBINE_MUPPED.out.combined_bam_tuple
-        supplementary_reads = COMBINE_MUPPED_SUPPLEMENTARY.out.combined_supplementary_tuple
-        nosupplementary_reads = COMBINE_MUPPED_NOSUPPLEMENTARY.out.combined_nosupplementary_tuple
+        mapped_reads = COMBINE_MAPPED.out.combined_bam_tuple
+        supplementary_reads = COMBINE_MAPPED_SUPPLEMENTARY.out.combined_supplementary_tuple
+        nosupplementary_reads = COMBINE_MAPPED_NOSUPPLEMENTARY.out.combined_nosupplementary_tuple
 }
 
 
@@ -116,15 +116,15 @@ workflow BAM_PROCESSING {
       }
 
       mapped_chunks_ch=PBMM2.out.map_tuple.groupTuple(size: params.number_of_chunks) //Adding size here to avoid waiting for all chunks across all samples to finish mapping before starting to combine. Combining runs now as soon as all chunks for a given sample are done mapping.
-      COMBINE_MUPPED(mapped_chunks_ch)
+      COMBINE_MAPPED(mapped_chunks_ch)
 
       supplementary_chunks_ch = PBMM2.out.supplementary_tuple.groupTuple(size: params.number_of_chunks)
-      COMBINE_MUPPED_SUPPLEMENTARY(supplementary_chunks_ch)
+      COMBINE_MAPPED_SUPPLEMENTARY(supplementary_chunks_ch)
 
       nosupplementary_chunks_ch = PBMM2.out.nosupplementary_tuple.groupTuple(size: params.number_of_chunks)
-      COMBINE_MUPPED_NOSUPPLEMENTARY(nosupplementary_chunks_ch)
+      COMBINE_MAPPED_NOSUPPLEMENTARY(nosupplementary_chunks_ch)
     emit:
-    mapped_reads = COMBINE_MUPPED.out.combined_bam_tuple
-    supplementary_reads = COMBINE_MUPPED_SUPPLEMENTARY.out.combined_supplementary_tuple
-    nosupplementary_reads = COMBINE_MUPPED_NOSUPPLEMENTARY.out.combined_nosupplementary_tuple
+    mapped_reads = COMBINE_MAPPED.out.combined_bam_tuple
+    supplementary_reads = COMBINE_MAPPED_SUPPLEMENTARY.out.combined_supplementary_tuple
+    nosupplementary_reads = COMBINE_MAPPED_NOSUPPLEMENTARY.out.combined_nosupplementary_tuple
 }

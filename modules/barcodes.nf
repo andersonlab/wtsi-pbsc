@@ -148,7 +148,7 @@ process COMBINE_DEDUPS {
     """
 }
 
-process COMBINE_MUPPED {
+process COMBINE_MAPPED {
     label 'combine_bams'
     publishDir "${params.results_output}qc/mapped", mode: 'copy'
 
@@ -168,7 +168,7 @@ process COMBINE_MUPPED {
 }
 
 
-process COMBINE_MUPPED_SUPPLEMENTARY {
+process COMBINE_MAPPED_SUPPLEMENTARY {
     label 'combine_bams'
     publishDir "${params.results_output}qc/mapped", mode: 'copy'
 
@@ -187,7 +187,7 @@ process COMBINE_MUPPED_SUPPLEMENTARY {
 }
 
 
-process COMBINE_MUPPED_NOSUPPLEMENTARY {
+process COMBINE_MAPPED_NOSUPPLEMENTARY {
     label 'combine_bams'
     publishDir "${params.results_output}qc/mapped", mode: 'copy'
 
