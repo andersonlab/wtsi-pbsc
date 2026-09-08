@@ -64,8 +64,8 @@ process GET_BARCODES {
 }
 
 
-process SUPSET_BAM {
-    label 'supset_bam'
+process SUBSET_BAM {
+    label 'subset_bam'
        
     input:
         tuple val(sample), path(bam), path(barcodes)
@@ -83,9 +83,9 @@ process SUPSET_BAM {
         """
 
 }
-//DELETE supset_bam_with_bai
-process supset_bam_with_bai {
-    label 'supset_bam'
+//DELETE subset_bam_with_bai
+process subset_bam_with_bai {
+    label 'subset_bam'
        
     input:
         tuple val(sample), path(bam), path(bai), path(barcodes)

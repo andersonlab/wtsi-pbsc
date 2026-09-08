@@ -1,5 +1,5 @@
 include { SPLIT_READS; REMOVE_PRIMER; TAG_BAM; REFINE_READS } from '../../modules/fltnc.nf'
-include {BARCODE_CORRECTION; GET_BARCODES; SUPSET_BAM; DEDUP_READS; COMBINE_DEDUPS; COMBINE_MAPPED; COMBINE_MAPPED_SUPPLEMENTARY; COMBINE_MAPPED_NOSUPPLEMENTARY; BAM_STATS} from '../../modules/barcodes.nf'
+include {BARCODE_CORRECTION; GET_BARCODES; SUBSET_BAM; DEDUP_READS; COMBINE_DEDUPS; COMBINE_MAPPED; COMBINE_MAPPED_SUPPLEMENTARY; COMBINE_MAPPED_NOSUPPLEMENTARY; BAM_STATS} from '../../modules/barcodes.nf'
 
 include { PBMM2 } from '../../modules/pbmm2.nf'
 
@@ -15,8 +15,8 @@ workflow DEDUP_ONLY {
         GET_BARCODES(corrected_bam_ch, params.number_of_chunks)
         barcode_channel = GET_BARCODES.out.barcodes_tuple.transpose()
         combined_ch = corrected_bam_ch.combine(barcode_channel, by: 0)
-        SUPSET_BAM(combined_ch)
-        DEDUP_READS(SUPSET_BAM.out.chunk_tuple, params.dedup_batch_size)
+        SUBSET_BAM(combined_ch)
+        DEDUP_READS(SUBSET_BAM.out.chunk_tuple, params.dedup_batch_size)
 
         deduped_chunks_ch = DEDUP_READS.out.dedup_tuple.groupTuple(size: params.number_of_chunks)
         COMBINE_DEDUPS(deduped_chunks_ch)
@@ -45,11 +45,11 @@ workflow MAPPING_ONLY {
         GET_BARCODES(dedup_bam_ch, params.number_of_chunks)
         barcode_channel = GET_BARCODES.out.barcodes_tuple.transpose()
         combined_ch = dedup_bam_ch.combine(barcode_channel, by: 0)
-        SUPSET_BAM(combined_ch)
+        SUBSET_BAM(combined_ch)
 
         // Map chunks — dedup already done, so go straight to PBMM2
         if (params.min_umi_barcodes) {
-            pbmm2_ch = SUPSET_BAM.out.chunk_tuple
+            pbmm2_ch = SUBSET_BAM.out.chunk_tuple
                 .combine(BAM_STATS.out.min_umi_barcodes_txt, by: 0)
                 .multiMap { sid, bam, bc ->
                     bam_tuple: tuple(sid, bam)
@@ -57,7 +57,7 @@ workflow MAPPING_ONLY {
                 }
             PBMM2(pbmm2_ch.bam_tuple, params.genome_fasta_f, pbmm2_ch.barcodes)
         } else {
-            PBMM2(SUPSET_BAM.out.chunk_tuple, params.genome_fasta_f, [])
+            PBMM2(SUBSET_BAM.out.chunk_tuple, params.genome_fasta_f, [])
         }
 
         mapped_chunks_ch = PBMM2.out.map_tuple.groupTuple(size: params.number_of_chunks)
@@ -95,8 +95,8 @@ workflow BAM_PROCESSING {
       GET_BARCODES(BARCODE_CORRECTION.out.barcode_corrected_tuple, params.number_of_chunks)
       barcode_channel=GET_BARCODES.out.barcodes_tuple.transpose()
       combined_ch = BARCODE_CORRECTION.out.barcode_corrected_tuple.combine(barcode_channel, by: 0)
-      SUPSET_BAM(combined_ch)
-      DEDUP_READS(SUPSET_BAM.out.chunk_tuple, params.dedup_batch_size)
+      SUBSET_BAM(combined_ch)
+      DEDUP_READS(SUBSET_BAM.out.chunk_tuple, params.dedup_batch_size)
       //these three should create combined dedup files and their stats
       deduped_chunks_ch = DEDUP_READS.out.dedup_tuple.groupTuple(size: params.number_of_chunks)
       COMBINE_DEDUPS(deduped_chunks_ch)
