@@ -27,7 +27,7 @@ process BARCODE_CORRECTION {
         fi
 
         # Sort step
-        samtools sort -@ ${task.cpus} -t CB "${sample_id}.corrected.bam" -o "${sample_id}.corrected.sorted.bam"
+        samtools sort -@ ${task.cpus} -m 1G -t CB "${sample_id}.corrected.bam" -o "${sample_id}.corrected.sorted.bam"
         samtools index "${sample_id}.corrected.sorted.bam"
 
         # BCStats step
@@ -116,9 +116,9 @@ process DEDUP_READS {
         tuple val(sample_id), path("${barcode_corrected_chunk_bam.name.replaceAll(/\.bam/, '.dedup.bam')}"), emit: dedup_tuple
 
     script:
+    def tmp_out_bam = barcode_corrected_chunk_bam.name.replaceAll(/\.bam/, '.dedup.tmp.bam')
+    def out_bam     = barcode_corrected_chunk_bam.name.replaceAll(/\.bam/, '.dedup.bam')
     """
-    tmp_out_bam=${barcode_corrected_chunk_bam.name.replaceAll(/\.bam/, '.dedup.tmp.bam')}
-    out_bam=${barcode_corrected_chunk_bam.name.replaceAll(/\.bam/, '.dedup.bam')}
     isoseq groupdedup  -j ${task.cpus} --batch-size ${b_size} --keep-non-real-cells ${barcode_corrected_chunk_bam} ${tmp_out_bam}
     samtools index -@ ${task.cpus} ${tmp_out_bam}
     bash ${baseDir}/scripts/append_to_tag.sh -i ${tmp_out_bam} -t CB:Z -s ${sample_id} -O sam | bash ${baseDir}/scripts/append_to_readname.sh -T CB:Z -O bam -o ${out_bam}
