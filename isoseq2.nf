@@ -23,6 +23,13 @@ if(!params.barcode_correction_percentile) {
 if(!params.min_polya_length) {
   params.min_polya_length=20
 }
+// Max reads per cell barcode fed to deduplication. Barcodes above this (and all
+// their reads) are dropped in BARCODE_CORRECTION: they are technical artefacts
+// whose huge groups make isoseq groupdedup exceed the LSF run limit. Set very
+// high to effectively disable.
+if(!params.max_reads_per_barcode) {
+  params.max_reads_per_barcode=500000
+}
 
 //if(!params.exclude_samples) {
 //  params.exclude_samples=[]

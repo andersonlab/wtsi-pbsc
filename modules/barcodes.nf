@@ -1,17 +1,20 @@
 process BARCODE_CORRECTION {
     label 'barcodes'
     publishDir "${params.results_output}qc/correct", mode: 'copy', pattern: '*.json, *.corrected.sorted.tsv'
+    publishDir "${params.results_output}qc/correct", mode: 'copy', pattern: '*.dropped_barcodes.txt'
 
     input:
         tuple val(sample_id), path(refined_reads_bam)
         path(threeprime_whitelist)
         val barcode_correction_method
         val barcode_correction_percentile
+        val max_reads_per_barcode
 
     output:
         tuple val(sample_id), path("${sample_id}.corrected.sorted.bam"), emit: barcode_corrected_tuple
         path "*corrected.sorted*"
         path "*corrected.report*"
+        path "${sample_id}.dropped_barcodes.txt", emit: dropped_barcodes
 
 
     script:
@@ -38,6 +41,29 @@ process BARCODE_CORRECTION {
         else
             echo "Invalid barcode correction method: ${barcode_correction_method}" >&2
             exit 1
+        fi
+
+        # --- Drop hyper-abundant barcodes before splitting/deduplication -------
+        # A cell barcode with more than ${max_reads_per_barcode} reads is a technical
+        # artefact (real cells never reach that); its enormous group makes isoseq
+        # groupdedup exceed the LSF run limit. Drop such barcodes AND all their reads
+        # here, so no downstream chunk (GET_BARCODES / SUBSET_BAM) or DEDUP sees them.
+        # NumberOfReads is column 2 of the bcstats TSV, counted on this same bam.
+        awk -F'\\t' -v m='${max_reads_per_barcode}' 'NR>1 && (\$2+0) > (m+0) {print \$1}' \\
+            "${sample_id}.corrected.sorted.tsv" > "${sample_id}.dropped_barcodes.txt"
+
+        if [ -s "${sample_id}.dropped_barcodes.txt" ]; then
+            echo "BARCODE_CORRECTION: dropping \$(wc -l < ${sample_id}.dropped_barcodes.txt) barcode(s) with > ${max_reads_per_barcode} reads" >&2
+            samtools view -h -@ ${task.cpus} "${sample_id}.corrected.sorted.bam" \\
+              | awk -F'\\t' 'NR==FNR{drop[\$1]=1; next}
+                     /^@/{print; next}
+                     { keep=1
+                       for(i=12;i<=NF;i++) if(substr(\$i,1,5)=="CB:Z:"){ if(substr(\$i,6) in drop) keep=0; break }
+                       if(keep) print }' \\
+                    "${sample_id}.dropped_barcodes.txt" - \\
+              | samtools view -b -@ ${task.cpus} -o "${sample_id}.corrected.sorted.capped.bam" -
+            mv -f "${sample_id}.corrected.sorted.capped.bam" "${sample_id}.corrected.sorted.bam"
+            samtools index "${sample_id}.corrected.sorted.bam"
         fi
         """
 

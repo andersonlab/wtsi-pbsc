@@ -91,7 +91,7 @@ workflow BAM_PROCESSING {
       TAG_BAM(REMOVE_PRIMER.out.removed_primer_tuple)
       REFINE_READS(TAG_BAM.out.tagged_tuple, params.tenx_primers, params.min_polya_length)
       //barcode correction
-      BARCODE_CORRECTION(REFINE_READS.out.refined_reads, params.threeprime_whitelist, params.barcode_correction_method, params.barcode_correction_percentile)
+      BARCODE_CORRECTION(REFINE_READS.out.refined_reads, params.threeprime_whitelist, params.barcode_correction_method, params.barcode_correction_percentile, params.max_reads_per_barcode)
       GET_BARCODES(BARCODE_CORRECTION.out.barcode_corrected_tuple, params.number_of_chunks)
       barcode_channel=GET_BARCODES.out.barcodes_tuple.transpose()
       combined_ch = BARCODE_CORRECTION.out.barcode_corrected_tuple.combine(barcode_channel, by: 0)
